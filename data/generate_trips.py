@@ -191,10 +191,10 @@ def make_dataframes(company_name,device_type,url,num_units):
     availability_df = pd.DataFrame(availability_data, columns=availability_columns)
     return (trip_df, availability_df)
 
-fbtrips,fbavail = make_dataframes("FlipBird","scooter","flipbird.co",100)
+btrips,bavail = make_dataframes("Bat","scooter","bat.co",100)
 ltrips,lavail = make_dataframes("Lemon","scooter","lemonbike.com",100)
 
-fbtrips.to_csv('flipbird_trips.csv',encoding='utf-8',index=False)
-fbavail.to_csv('flipbird_availability.csv',encoding='utf-8',index=False)
+btrips.to_csv('bat_trips.csv',encoding='utf-8',index=False)
+bavail.to_csv('bat_availability.csv',encoding='utf-8',index=False)
 ltrips.to_csv('lemon_trips.csv',encoding='utf-8',index=False)
 lavail.to_csv('lemon_availability.csv',encoding='utf-8',index=False)
