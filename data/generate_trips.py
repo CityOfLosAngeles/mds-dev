@@ -1,6 +1,10 @@
 """
-This file will generate json files for each of our fake mobility providers
-(FlipBird and Lemon) with trip data following the mobility data specifications
+This file will generate csv files for each of our fake mobility providers 
+with trip data following the mobility data specifications
+
+Also uses District 10 boundary to create service area json files for both
+companies.
+
 Author: David Klinger
 """
 
@@ -17,19 +21,41 @@ import datetime
 import time
 
 # generate district 10 boundary using gps coordinates
+# also used to make json for service areas
 bounds = fiona.open('CouncilDistricts.shp')
 original = pyproj.Proj(bounds.crs)
 dest = pyproj.Proj(init='epsg:4326')
 polygons = []
+polygons_list = []
 for poly in bounds[11]['geometry']['coordinates']: # get district 10
     polygon = [] # eventual converted polygon
+    polygon_lists = []
     for x,y in poly:
         x_prime,y_prime = pyproj.transform(original,dest,x,y) # transform point
         p = (x_prime,y_prime)
         polygon.append(p)
+        polygon_lists.append([x_prime,y_prime])
     polygons.append(shapely.geometry.Polygon(polygon))
+    polygons_list.append(polygon_lists)
 boundary = shapely.geometry.MultiPolygon(polygons) # our final boundary
 
+# write service area jsons
+def make_service_area(company_name):
+    d = {}
+    d['operator_name'] = company_name
+    d['service_area_id'] = 1
+    d['service_start_date'] = time.mktime(datetime.datetime(2018,8,1,6,0,0,0)
+            .timetuple())
+    d['service_end_date'] = time.mktime(datetime.datetime(2018,9,1,3,0,0,0)
+            .timetuple())
+    d['service_area'] = {}
+    d['service_area']['type']='MultiPolygon'
+    d['service_area']['coordinates'] = polygons_list
+    f = open(company_name+"_service_area"+".json",'w')
+    f.write(json.dumps(d,indent=4,separators=(',',': ')))
+
+make_service_area("bat")
+make_service_area("lemon")
 
 # returns a random point somewhere in the city of LA
 def get_random_point():
@@ -198,3 +224,4 @@ btrips.to_csv('bat_trips.csv',encoding='utf-8',index=False)
 bavail.to_csv('bat_availability.csv',encoding='utf-8',index=False)
 ltrips.to_csv('lemon_trips.csv',encoding='utf-8',index=False)
 lavail.to_csv('lemon_availability.csv',encoding='utf-8',index=False)
+
