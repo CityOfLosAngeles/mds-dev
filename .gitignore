@@ -1,0 +1,10 @@
+data/bat_availability.csv
+data/bat_availability.json
+data/bat_service_area.json
+data/bat_trips.csv
+data/bat_trips.json
+data/lemon_availability.csv
+data/lemon_availability.json
+data/lemon_service_area.json
+data/lemon_trips.json
+data/lemon_trips.csv
