@@ -10,10 +10,11 @@ import shapely.wkt
 import json
 
 def trip_convert(input_file,output_file):
-    result = ""
     db = pandas.read_csv(input_file)
     db = db.fillna('')
     num_rows = db.shape[0]
+    data = {}
+    data['data'] = []
     for i in db.index:
         if i%5000==0:
             print("{} of {}".format(i,num_rows))
@@ -30,15 +31,17 @@ def trip_convert(input_file,output_file):
             d.pop('route',None)
         if d['sample_rate']=='':
             d.pop('sample_rate',None)
-        result += json.dumps(d,indent=4,separators=(',',': '))
+        data['data'].append(d)
+    result = json.dumps(data,indent=4,separators=(',',': '))
     f = open(output_file,'w')
     f.write(result)
 
 def availability_convert(input_file,output_file):
-    result = ""
     db = pandas.read_csv(input_file)
     db = db.fillna('')
     num_rows = db.shape[0]
+    data = {}
+    data['data'] = []
     for i in db.index:
         if i%5000==0:
             print("{} of {}".format(i,num_rows))
@@ -49,7 +52,8 @@ def availability_convert(input_file,output_file):
             d['allowed_placement'] = "true"
         else:
             d['allowed_placement'] = "false"
-        result += json.dumps(d,indent=4,separators=(',',': '))
+        data['data'].append(d)
+    result = json.dumps(data,indent=4,separators=(',',': '))
     f = open(output_file,'w')
     f.write(result)
 
@@ -66,4 +70,3 @@ print("Done.")
 print("Converting Bat Availability")
 availability_convert('bat_availability.csv','bat_availability.json')
 print("Done.")
-

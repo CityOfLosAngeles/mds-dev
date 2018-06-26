@@ -19,6 +19,7 @@ import random
 import math
 import datetime
 import time
+import uuid
 
 # generate district 10 boundary using gps coordinates
 # also used to make json for service areas
@@ -41,9 +42,11 @@ boundary = shapely.geometry.MultiPolygon(polygons) # our final boundary
 
 # write service area jsons
 def make_service_area(company_name):
+    data = {}
+    data['data'] = []
     d = {}
     d['operator_name'] = company_name
-    d['service_area_id'] = 1
+    d['service_area_id'] = str(uuid.uuid4())
     d['service_start_date'] = time.mktime(datetime.datetime(2018,8,1,6,0,0,0)
             .timetuple())
     d['service_end_date'] = time.mktime(datetime.datetime(2018,9,1,3,0,0,0)
@@ -51,8 +54,9 @@ def make_service_area(company_name):
     d['service_area'] = {}
     d['service_area']['type']='MultiPolygon'
     d['service_area']['coordinates'] = polygons_list
+    data['data'].append(d)
     f = open(company_name+"_service_area"+".json",'w')
-    f.write(json.dumps(d,indent=4,separators=(',',': ')))
+    f.write(json.dumps(data,indent=4,separators=(',',': ')))
 
 make_service_area("bat")
 make_service_area("lemon")
@@ -146,12 +150,11 @@ def make_dataframes(company_name,device_type,url,num_units):
     availability_data = []
     for i in range(0,num_units):
         accuracy = 5
-        device_id = i+1
-        print("Generating device {}:{}".format(company_name,device_id))
+        print("Generating device {}: {}".format(company_name,i))
+        device_id = uuid.uuid4()
         for j in range(1,32):
             end_time = time.mktime(datetime.datetime(2018,8,j,6,0,0,0).timetuple())
             end_point = get_random_point()
-            trip_id = 0
             placement_reason = 'maintenance_drop_off'
             while not day_over(end_time):
                 if not boundary.contains(end_point):
@@ -171,9 +174,9 @@ def make_dataframes(company_name,device_type,url,num_units):
                                               None])
                     end_time = end_time + wait_time
                     placement_reason = 'out_of_service_area_drop_off'
-                trip_id += 1
                 wait_time = random.uniform(0,wait_time_max(end_time))
                 start_time = end_time + wait_time
+                trip_id = uuid.uuid4()
                 start_point = end_point
                 trip_duration = numpy.random.chisquare(5)*1.2*60 # in seconds
                 # we will assume scooters go about 4 m/s
