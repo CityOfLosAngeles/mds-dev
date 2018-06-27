@@ -1,5 +1,5 @@
 """
-This file will generate csv files for each of our fake mobility providers 
+This file will generate json files for each of our fake mobility providers 
 with trip data following the mobility data specifications
 
 Also uses District 10 boundary to create service area json files for both
@@ -20,6 +20,9 @@ import math
 import datetime
 import time
 import uuid
+import pandas
+import shapely.wkt
+import json
 
 # generate district 10 boundary using gps coordinates
 # also used to make json for service areas
@@ -150,7 +153,7 @@ def make_dataframes(company_name,device_type,url,num_units):
     availability_data = []
     for i in range(0,num_units):
         accuracy = 5
-        print("Generating device {}: {}".format(company_name,i))
+        print("Generating device {}: {} of {}".format(company_name,i,num_units-1))
         device_id = uuid.uuid4()
         for j in range(1,32):
             end_time = time.mktime(datetime.datetime(2018,8,j,6,0,0,0).timetuple())
@@ -220,11 +223,77 @@ def make_dataframes(company_name,device_type,url,num_units):
     availability_df = pd.DataFrame(availability_data, columns=availability_columns)
     return (trip_df, availability_df)
 
+# convert trip data into json
+def trip_convert(db,output_file):
+    db = db.fillna('')
+    num_rows = db.shape[0]
+    data = {}
+    data['data'] = []
+    for i in db.index:
+        if i%5000==0:
+            print("{} of {}".format(i,num_rows))
+        d = db.loc[i].to_dict()
+        start_loc = d['start_point']
+        end_loc = d['end_point']
+        d['start_point'] = {}
+        d['start_point']['type'] = "Point"
+        d['start_point']['coordinates'] = [start_loc.x,start_loc.y]
+        d['end_point'] = {}
+        d['end_point']['type'] = "Point"
+        d['end_point']['coordinates'] = [end_loc.x,end_loc.y]
+        if d['route']=='':
+            d.pop('route',None)
+        if d['sample_rate']=='':
+            d.pop('sample_rate',None)
+        d['device_id'] = str(d['device_id'])
+        d['trip_id'] = str(d['trip_id'])
+        data['data'].append(d)
+    result = json.dumps(data,indent=4,separators=(',',': '))
+    f = open(output_file,'w')
+    f.write(result)
+
+# convert availability data into json
+def availability_convert(db,output_file):
+    db = db.fillna('')
+    num_rows = db.shape[0]
+    data = {}
+    data['data'] = []
+    for i in db.index:
+        if i%5000==0:
+            print("{} of {}".format(i,num_rows))
+        d = db.loc[i].to_dict()
+        if d['associated_trips']=='':
+            d.pop('associated_trips',None)
+        if d['allowed_placement']==1:
+            d['allowed_placement'] = "true"
+        else:
+            d['allowed_placement'] = "false"
+        d['device_id'] = str(d['device_id'])
+        data['data'].append(d)
+    result = json.dumps(data,indent=4,separators=(',',': '))
+    f = open(output_file,'w')
+    f.write(result)
+
+print("Generating bat data.")
 btrips,bavail = make_dataframes("Bat","scooter","bat.co",100)
+print("Done.")
+print("Generating Lemon data.")
 ltrips,lavail = make_dataframes("Lemon","scooter","lemonbike.com",100)
+print("Done.")
 
-btrips.to_csv('bat_trips.csv',encoding='utf-8',index=False)
-bavail.to_csv('bat_availability.csv',encoding='utf-8',index=False)
-ltrips.to_csv('lemon_trips.csv',encoding='utf-8',index=False)
-lavail.to_csv('lemon_availability.csv',encoding='utf-8',index=False)
+print("Writing Bat Trips JSON")
+trip_convert(btrips,'bat_trips.json')
+print("Done.")
 
+print("Writing Lemon Trips JSON")
+trip_convert(ltrips,'lemon_trips.json')
+print("Done.")
+
+
+print("Writing Bat Availability JSON")
+availability_convert(bavail,'bat_availability.json')
+print("Done.")
+
+print("Writing Lemon Availability JSON")
+availability_convert(lavail,'lemon_availability.json')
+print("Done.")
