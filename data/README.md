@@ -1,6 +1,6 @@
 ## Generating Data
 
-`generate_trips.py` is a short python script to generate json files containing trip, availability, and service area date for two fake scooter companies, Bat and Lemon.
+`generate_data.py` is a short python script to generate json files containing trip, availability, and service area date for two fake scooter companies, Bat and Lemon.
 
 See comments in the file for detailed information on generation but there are a few things to note:
 
@@ -12,4 +12,4 @@ See comments in the file for detailed information on generation but there are a 
 
 ## Usage
 
-`python generate_trips.py` will create the csv files. Requires pandas, numpy, fiona, pprint, shapely, pyproj, and datetime. It takes a while to run, but the code goes through four stages: generating data, converting trips to json, and then converting availability to json.
+`python generate_data.py` will create the csv files. Requires pandas, numpy, fiona, pprint, shapely, pyproj, and datetime. It takes a while to run, but the code goes through four stages: generating data, converting trips to json, and then converting availability to json.
