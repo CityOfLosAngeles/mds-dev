@@ -199,8 +199,8 @@ def make_dataframes(company_name,device_type,url,num_units):
                                           pickup_reason,
                                           None])
                 end_time = start_time + trip_duration
-                standard_cost = math.floor(trip_duration/60)/100
-                actual_cost = (100 + (math.floor(trip_duration/60)-1)*15)/100
+                standard_cost = math.floor(trip_duration/60)
+                actual_cost = (100 + (math.floor(trip_duration/60)-1)*15)
                 parking_verification = url+"/images/" + random_string()
                 placement_reason = 'user_drop_off'
                 trip_data.append([company_name,
@@ -252,6 +252,8 @@ def trip_convert(db,output_file):
         d['accuracy'] = float(d['accuracy'])
         d['start_time'] = float(d['start_time'])
         d['end_time'] = float(d['end_time'])
+        d['standard_cost'] = int(d['standard_cost'])
+        d['actual_cost'] = int(d['actual_cost'])
         data['data'].append(d)
     result = json.dumps(data,indent=4,separators=(',',': '))
     f = open(output_file,'w')
