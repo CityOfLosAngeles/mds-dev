@@ -17,27 +17,33 @@ CREATE TABLE IF NOT EXISTS trips (
     actual_cost INT
 );
 
-CREATE TYPE placement_reason AS ENUM ('user_drop_off',
-        'rebalancing_drop_off',
-        'maintenance_drop_off',
+CREATE TYPE event_type AS ENUM ('available',
+        'reserved',
+        'unavailable',
+	'removed');
+
+CREATE TYPE reason AS ENUM ('service_start',
+	'maintenance',
+	'maintenance_drop_off',
+	'rebalance_drop_off',
+        'user_drop_off',
+	'user_pick_up',
+	'low_battery',
+	'service_end',
+	'rebalance_pick_up',
+	'maintenance_pick_up',
+	'out_of_service_area_pick_up',
 	'out_of_service_area_drop_off');
 
-CREATE TYPE pickup_reason AS ENUM ('user_pick_up',
-        'out_of_service_area_pick_up',
-	'maintenance_pick_up');
-
-CREATE TABLE IF NOT EXISTS availability (
+CREATE TABLE IF NOT EXISTS status_change (
     company_name TEXT NOT NULL,
     device_type TEXT NOT NULL,
     device_id UUID NOT NULL,
-    availability_start_time BIGINT NOT NULL,
-    availability_end_time BIGINT NOT NULL,
-    placement_reason placement_reason NOT NULL,
-    allowed_placement BOOLEAN NOT NULL,
-    pickup_reason pickup_reason NOT NULL,
+    event_type event_type NOT NULL,
+    reason reason NOT NULL,
+    event_time BIGINT NOT NULL,
+    location POINT NOT NULL,
+    battery_pct FLOAT NOT NULL,
     associated_trips UUID[]
 );
-
-
-
 

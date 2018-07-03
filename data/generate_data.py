@@ -20,7 +20,6 @@ import math
 import datetime
 import time
 import uuid
-import pandas
 import shapely.wkt
 import json
 
@@ -131,97 +130,146 @@ trip_columns = ['company_name',
                 'standard_cost',
                 'actual_cost']
 
-availability_columns = ['company_name',
+status_change_columns = ['company_name',
                         'device_type',
                         'device_id',
-                        'availability_start_time',
-                        'availability_end_time',
-                        'placement_reason',
-                        'allowed_placement',
-                        'pickup_reason',
+                        'event_type',
+                        'reason',
+                        'event_time',
+                        'location',
+                        'battery_pct',
                         'associated_trips']
-            
 
-# not going a complete agent based simulation
-# the day starts at 6 am
-# the day end at 2 am
-# between 2 and 6 the scooters are charged or something
-# they start the next day at new random positions
-# returns a dataframe with the trips
-def make_dataframes(company_name,device_type,url,num_units):
+def generate_day_data(day,device_id,company_name,device_type,url):
     trip_data = []
-    availability_data = []
+    status_change_data = []
+    battery_pct = 100
+    end_time = time.mktime(datetime.datetime(2018,8,day,6,0,0,0).timetuple())
+    end_point = get_random_point()
+    end_day_pick_up = False # flag
+    status_change_data.append([company_name,
+                               device_type,
+                               device_id,
+                               'available',
+                               'service_start',
+                               end_time,
+                               end_point,
+                               battery_pct,
+                               None])
+    while not day_over(end_time):
+        if not boundary.contains(end_point):
+            # pick up
+            status_change_data.append([company_name,
+                                       device_type,
+                                       device_id,
+                                       'removed',
+                                       'out_of_service_area_pick_up',
+                                       end_time,
+                                       end_point,
+                                       battery_pct,
+                                       None])
+            wait_time = random.uniform(10*60,2*60*60)
+            end_point = get_random_point()
+            end_time = end_time + wait_time
+            # drop off
+            status_change_data.append([company_name,
+                                       device_type,
+                                       device_id,
+                                       'available',
+                                       'out_of_service_area_drop_off',
+                                       end_time,
+                                       end_point,
+                                       battery_pct,
+                                       None])
+        wait_time = random.uniform(0,wait_time_max(end_time))
+        start_time = end_time + wait_time
+        start_point = end_point
+        if day_over(start_time):
+            status_change_data.append([company_name,
+                                       device_type,
+                                       device_id,
+                                       'removed',
+                                       'service_end',
+                                       start_time,
+                                       start_point,
+                                       battery_pct,
+                                       None])
+            end_day_pick_up = True
+            end_time = start_time
+        else:
+            trip_id = uuid.uuid4()
+            trip_duration = numpy.random.chisquare(5)*1.2*60 # in seconds
+            # we will assume scooters go about 4 m/s
+            trip_distance = trip_duration*4
+            # 20% penalty to account for roads
+            end_point = get_point_nearby(start_point,trip_distance*0.8)
+            end_time = start_time + trip_duration
+            standard_cost = math.floor(trip_duration/60)
+            actual_cost = (100 + (math.floor(trip_duration/60)-1)*15)
+            parking_verification = url+"/images/" + random_string()
+            status_change_data.append([company_name,
+                                       device_type,
+                                       device_id,
+                                       'reserved',
+                                       'user_pick_up',
+                                       start_time,
+                                       start_point,
+                                       battery_pct,
+                                       None])
+            battery_pct -= 0.001*trip_duration
+            status_change_data.append([company_name,
+                                       device_type,
+                                       device_id,
+                                       'available',
+                                       'user_drop_off',
+                                       start_time,
+                                       start_point,
+                                       battery_pct,
+                                       None])
+            trip_data.append([company_name,
+                              device_type,
+                              device_id,
+                              trip_duration,
+                              trip_distance,
+                              start_point,
+                              end_point,
+                              5,
+                              None,
+                              None,
+                              device_id,
+                              int(start_time),
+                              int(end_time),
+                              parking_verification,
+                              standard_cost,
+                              actual_cost])
+    if not end_day_pick_up:
+        status_change_data.append([company_name,
+                                   device_type,
+                                   device_id,
+                                   'removed',
+                                   'service_end',
+                                   start_time,
+                                   start_point,
+                                   battery_pct,
+                                   None])
+        end_day_pick_up = True
+    return trip_data,status_change_data
+
+def make_dataframes(company_name, device_type,url,num_units):
+    trip_data = []
+    status_change_data = []
     for i in range(0,num_units):
-        accuracy = 5
         print("Generating device {}: {} of {}".format(company_name,i,num_units-1))
         device_id = uuid.uuid4()
         for j in range(1,32):
-            end_time = time.mktime(datetime.datetime(2018,8,j,6,0,0,0).timetuple())
-            end_point = get_random_point()
-            placement_reason = 'maintenance_drop_off'
-            while not day_over(end_time):
-                if not boundary.contains(end_point):
-                    # handles case where left outside boundary
-                    # takes anywhere between 10 minutes and 2 hours for
-                    # company to get it, placed randomly in service area
-                    wait_time = random.uniform(10*60,2*60*60)
-                    end_point = get_random_point()
-                    availability_data.append([company_name,
-                                              device_type,
-                                              device_id,
-                                              end_time,
-                                              end_time + wait_time,
-                                              'user_drop_off',
-                                              False,
-                                              'out_of_service_area_pick_up',
-                                              None])
-                    end_time = end_time + wait_time
-                    placement_reason = 'out_of_service_area_drop_off'
-                wait_time = random.uniform(0,wait_time_max(end_time))
-                start_time = end_time + wait_time
-                trip_id = uuid.uuid4()
-                start_point = end_point
-                trip_duration = numpy.random.chisquare(5)*1.2*60 # in seconds
-                # we will assume scooters go about 4 m/s
-                trip_distance = trip_duration*4                 
-                # 20% penalty to account for roads - cannot take a straight path
-                end_point = get_point_nearby(start_point,trip_distance*0.8)
-                pickup_reason = 'user_pick_up'
-                if day_over(start_time + trip_duration):
-                    pickup_reason = 'maintenance_pick_up'
-                availability_data.append([company_name,
-                                          device_type,
-                                          device_id,
-                                          int(end_time),
-                                          int(start_time),
-                                          placement_reason,
-                                          True,
-                                          pickup_reason,
-                                          None])
-                end_time = start_time + trip_duration
-                standard_cost = math.floor(trip_duration/60)
-                actual_cost = (100 + (math.floor(trip_duration/60)-1)*15)
-                parking_verification = url+"/images/" + random_string()
-                placement_reason = 'user_drop_off'
-                trip_data.append([company_name,
-                                  device_type,
-                                  trip_id,
-                                  trip_duration,
-                                  trip_distance,
-                                  start_point,
-                                  end_point,
-                                  accuracy,
-                                  None,
-                                  None,
-                                  device_id,
-                                  int(start_time),
-                                  int(end_time),
-                                  parking_verification,
-                                  standard_cost,
-                                  actual_cost])
+            t_data, sc_data = generate_day_data(j,device_id,
+                    company_name,device_type,url)
+            trip_data += t_data
+            status_change_data += sc_data
     trip_df = pd.DataFrame(trip_data,columns=trip_columns)
-    availability_df = pd.DataFrame(availability_data, columns=availability_columns)
-    return (trip_df, availability_df)
+    status_change_df = pd.DataFrame(status_change_data,
+            columns=status_change_columns)
+    return trip_df, status_change_df
 
 # convert trip data into json
 def trip_convert(db,output_file):
@@ -260,7 +308,7 @@ def trip_convert(db,output_file):
     f.write(result)
 
 # convert availability data into json
-def availability_convert(db,output_file):
+def status_change_convert(db,output_file):
     db = db.fillna('')
     num_rows = db.shape[0]
     data = {}
@@ -271,21 +319,23 @@ def availability_convert(db,output_file):
         d = db.loc[i].to_dict()
         if d['associated_trips']=='':
             d.pop('associated_trips',None)
-        if d['allowed_placement']==1:
-            d['allowed_placement'] = "true"
-        else:
-            d['allowed_placement'] = "false"
         d['device_id'] = str(d['device_id'])
+        start_loc = d['location']
+        d['location'] = {}
+        d['location']['type'] = "Point"
+        d['location']['coordinates'] = [start_loc.x,start_loc.y]
+        d['event_time'] = int(d['event_time'])
+        d['battery_pct'] = float(d['battery_pct'])
         data['data'].append(d)
     result = json.dumps(data,indent=4,separators=(',',': '))
     f = open(output_file,'w')
     f.write(result)
 
 print("Generating bat data.")
-btrips,bavail = make_dataframes("Bat","scooter","bat.co",100)
+btrips,bsc = make_dataframes("Bat","scooter","bat.co",100)
 print("Done.")
 print("Generating Lemon data.")
-ltrips,lavail = make_dataframes("Lemon","scooter","lemonbike.com",100)
+ltrips,lsc = make_dataframes("Lemon","scooter","lemonbike.com",100)
 print("Done.")
 
 print("Writing Bat Trips JSON")
@@ -296,11 +346,10 @@ print("Writing Lemon Trips JSON")
 trip_convert(ltrips,'lemon_trips.json')
 print("Done.")
 
-
-print("Writing Bat Availability JSON")
-availability_convert(bavail,'bat_availability.json')
+print("Writing Bat Status Change JSON")
+status_change_convert(bsc,'bat_status_change.json')
+print("Done.")
+print("Writing Lemon Status Change JSON")
+status_change_convert(lsc,'lemon_status_change.json')
 print("Done.")
 
-print("Writing Lemon Availability JSON")
-availability_convert(lavail,'lemon_availability.json')
-print("Done.")

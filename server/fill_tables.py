@@ -51,7 +51,7 @@ def get_trip_data(url,con):
     df = pd.DataFrame(data=d)
     df.to_sql('trips',con,if_exists='append',index=False)
 
-def get_availability_data(url,con):
+def get_status_change_data(url,con):
     try:
         data = requests.get(url)
     except requests.exceptions.RequestException as error:
@@ -62,21 +62,27 @@ def get_availability_data(url,con):
     d = {'company_name':[],
          'device_type':[],
          'device_id':[],
-         'availability_start_time':[],
-         'availability_end_time':[],
-         'placement_reason':[],
-         'allowed_placement':[],
-         'pickup_reason':[],
+         'event_type':[],
+         'reason':[],
+         'event_time':[],
+         'location':[],
+         'battery_pct':[],
          'associated_trips':[]}
     for i in range(len(datas)):
         entry = datas[i]
         for k in d:
             if k in entry:
-                d[k].append(entry[k])
+                if k=='location':
+                    x = entry[k]['coordinates'][0]
+                    y = entry[k]['coordinates'][1]
+                    point = str((x,y))
+                    d[k].append(point)
+                else:
+                    d[k].append(entry[k])
             else:
                 d[k].append(None)
     df = pd.DataFrame(data=d)
-    df.to_sql('availability',con,if_exists='append',index=False)
+    df.to_sql('status_change',con,if_exists='append',index=False)
 
 con = connect("david","password","transit")
 
@@ -84,8 +90,8 @@ print("Writing lemon trip data.")
 get_trip_data("http://localhost:8000/lemon_trips.json",con)
 print("Writing bat trip data.")
 get_trip_data("http://localhost:8000/bat_trips.json",con)
-print("writing lemon availability data.")
-get_availability_data("http://localhost:8000/lemon_availability.json",con)
-print("writing bat availability data.")
-get_availability_data("http://localhost:8000/bat_availability.json",con)
+print("writing lemon status change data.")
+get_status_change_data("http://localhost:8000/lemon_status_change.json",con)
+print("writing bat status change data.")
+get_status_change_data("http://localhost:8000/bat_status_change.json",con)
 
