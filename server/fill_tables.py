@@ -4,10 +4,27 @@ import sqlalchemy
 import json
 import requests
 import pprint
+import argparse
 
-def connect(user, password, db, host='localhost', port=5432):
+parser = argparse.ArgumentParser()
+parser.add_argument("user", type=str, 
+        help="username to access postgresql database")
+parser.add_argument("password", type=str, 
+        help="password to access postgresql database")
+parser.add_argument("database", type=str, 
+        help="database name")
+parser.add_argument("--host","-H", type=str, 
+        help="database host")
+parser.add_argument("--port","-p", type=str, 
+        help="database port")
+args = parser.parse_args()
+
+
+
+def connect(user, password, db, host, port):
     url = 'postgresql://{}:{}@{}:{}/{}'
     url = url.format(user,password,host,port,db)
+    print(url)
     con = sqlalchemy.create_engine(url)
     return con
 
@@ -84,7 +101,17 @@ def get_status_change_data(url,con):
     df = pd.DataFrame(data=d)
     df.to_sql('status_change',con,if_exists='append',index=False)
 
-con = connect("david","password","transit")
+print(args)
+user = args.user
+password = args.password
+db = args.database
+host = "localhost"
+if args.host is not None:
+    host = args.host
+port = 5432
+if args.port is not None:
+    port = args.port
+con = connect(user,password,db,host,port)
 
 print("Writing lemon trip data.")
 get_trip_data("http://localhost:8000/lemon_trips.json",con)

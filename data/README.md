@@ -12,4 +12,4 @@ See comments in the file for detailed information on generation but there are a 
 
 ## Usage
 
-`python generate_data.py` will create the csv files. Requires pandas, numpy, fiona, pprint, shapely, pyproj, and datetime. It takes a while to run, but the code goes through four stages: generating data, converting trips to json, and then converting availability to json.
+`python generate_data.py` will create the csv files. Requires pandas, numpy, fiona, pprint, shapely, pyproj, and datetime. It takes a while to run, but the code goes through four stages: generating data, converting trips to json, and then converting status changes to json.
