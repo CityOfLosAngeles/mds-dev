@@ -1,8 +1,8 @@
 import psycopg2
 import pandas as pd
 import sqlalchemy
-import json
-import requests
+import json 
+import requests 
 import pprint
 import argparse
 
@@ -17,6 +17,8 @@ parser.add_argument("--host","-H", type=str,
         help="database host")
 parser.add_argument("--port","-p", type=str, 
         help="database port")
+parser.add_argument("filename", type=str, 
+        help="path to file that contains list of urls to pull from, as well as their types")
 args = parser.parse_args()
 
 
@@ -24,7 +26,6 @@ args = parser.parse_args()
 def connect(user, password, db, host, port):
     url = 'postgresql://{}:{}@{}:{}/{}'
     url = url.format(user,password,host,port,db)
-    print(url)
     con = sqlalchemy.create_engine(url)
     return con
 
@@ -101,7 +102,6 @@ def get_status_change_data(url,con):
     df = pd.DataFrame(data=d)
     df.to_sql('status_change',con,if_exists='append',index=False)
 
-print(args)
 user = args.user
 password = args.password
 db = args.database
@@ -113,12 +113,17 @@ if args.port is not None:
     port = args.port
 con = connect(user,password,db,host,port)
 
-print("Writing lemon trip data.")
-get_trip_data("http://localhost:8000/lemon_trips.json",con)
-print("Writing bat trip data.")
-get_trip_data("http://localhost:8000/bat_trips.json",con)
-print("writing lemon status change data.")
-get_status_change_data("http://localhost:8000/lemon_status_change.json",con)
-print("writing bat status change data.")
-get_status_change_data("http://localhost:8000/bat_status_change.json",con)
+with open(args.filename) as f:
+    lines = f.readlines()
+    for line in lines:
+        entries = line.strip().split(', ')
+        print("Writing data: {} - {}".format(entries[0],entries[1]))
+        if entries[1] == 'status_changes':
+            print("Writing status changes.")
+            get_status_change_data(entries[0],con)
+        elif entries[1] == 'trips':
+            print("Writing trips.")
+            get_trip_data(entries[0],con)
+        print("Done")
+        print()
 
