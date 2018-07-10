@@ -102,12 +102,12 @@ def random_string():
 # depends on time, which should be unix time
 def wait_time_max(time):
     dt = datetime.datetime.fromtimestamp(time)
-    hours = dt.hour    
-    hours -= 5
-    if hours < 1:
-        hours += 1
+    hours = dt.hour
+    if hours < 3:
+        hours += 24
+    hours -= 6
     hours += dt.minute/60 + dt.second/3600
-    return 1800*math.cos(hours*(10/math.pi)) + 1800
+    return 1800*math.cos(hours*(math.pi/10)) + 1800
 
 def day_over(end_time):
     dt = datetime.datetime.fromtimestamp(end_time)
@@ -222,8 +222,8 @@ def generate_day_data(day,device_id,company_name,device_type,url):
                                        device_id,
                                        'available',
                                        'user_drop_off',
-                                       start_time,
-                                       start_point,
+                                       end_time,
+                                       end_point,
                                        battery_pct,
                                        None])
             trip_data.append([company_name,
@@ -334,6 +334,7 @@ def status_change_convert(db,output_file):
 print("Generating bat data.")
 btrips,bsc = make_dataframes("Bat","scooter","bat.co",100)
 print("Done.")
+
 print("Generating Lemon data.")
 ltrips,lsc = make_dataframes("Lemon","scooter","lemonbike.com",100)
 print("Done.")
@@ -352,4 +353,3 @@ print("Done.")
 print("Writing Lemon Status Change JSON")
 status_change_convert(lsc,'lemon_status_change.json')
 print("Done.")
-
