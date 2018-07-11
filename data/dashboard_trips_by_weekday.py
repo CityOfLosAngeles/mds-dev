@@ -1,7 +1,7 @@
 
 '''
     This file will generate an html file to serve as a precursor for a dashboard file.
-    Fields will need to be changed for 'connect'.
+    Name and Password fields will need to be changed for 'connect'.
     
     Author: Hannah Ross
 '''
