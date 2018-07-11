@@ -1,21 +1,25 @@
 
+'''
+    This file will generate an html file to serve as a precursor for a dashboard file.
+    Fields will need to be changed for 'connect'.
+    
+    Author: Hannah Ross
+'''
+
 import calendar
 import datetime
 import plotly.plotly as py
 import sqlalchemy
 from mapbox import Datasets
 import os
-import pandas as pd
 from mapboxgl.utils import create_color_stops
 from mapboxgl.viz import CircleViz
 import psycopg2
 import pandas
-import sqlalchemy
 import json
 import requests
 import ast
 import pandas as pd
-import os
 from mapboxgl.utils import *
 from mapboxgl.viz import *
 
@@ -63,6 +67,7 @@ def count_days(day,dayvec):
 
 def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
 
+#(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 4, 8, 33, 13) , tdb)
     trips_df = obs_in_days(firstday ,lastday , tdb)
     trips_by_day = get_days_of_trips(trips_df)
     mon_count = count_days('Monday',trips_by_day)
@@ -73,7 +78,7 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
     sat_count= count_days('Saturday',trips_by_day)
     sun_count= count_days('Sunday',trips_by_day)
     the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
-
+    #import plotly.plotly as py
 
     fig = {
       "data": [
@@ -91,6 +96,25 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
     }
     return fig
 
+    #py.iplot(fig, filename='trips_per_day')
+    
 result_fig = plot_trips_per_weekdays_for_interval(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 7, 8, 33, 13),tdb )
-py.iplot(result_fig,filename='trips_per_weekday')
+#py.iplot(result_fig,filename='trips_per_day') # this generates plot inline
 
+first_plot_url = py.plot(result_fig, filename='trips_per_weekday', auto_open=False,)
+html_string = '''
+<html>
+        <!-- *** Section 1 *** --->
+        <h2>Viualizing the trips taken per day of week</h2>
+        <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
+src="''' + first_plot_url + '''.embed?width=800&height=550"></iframe>
+        <p>More trips were takaen on Saturday and Sunday .</p>
+        
+    </body>
+</html>'''
+
+print('Generating \'dash_testing.html\' ...')
+f = open('dash_testing.html','w')
+f.write(html_string)
+f.close()
+print('Done.')
