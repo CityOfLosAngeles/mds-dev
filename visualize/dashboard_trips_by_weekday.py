@@ -35,7 +35,11 @@ def get_data(con):
                                        index_col=None)
     return (trips_db,status_change_db)
 
-con = connect("hannah1ross","password","transit")
+# INFORMATION GOES HERE
+user = "username"
+password = "password"
+db = "database"
+con = connect(user,password,db)
 tdb, scdb = get_data(con)
 
 def obs_in_month(month,pd_df):
