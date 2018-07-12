@@ -74,10 +74,6 @@ def count_days(day,dayvec):
 
 def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
 
-#(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 4, 8, 33, 13) , tdb)
-#firstday = datetime.datetime(2018, 8, 3, 8, 32, 13)
-#lastday = datetime.datetime(2018, 8, 7, 8, 33, 13)
-
     trips_df = obs_in_days(firstday ,lastday , tdb)
     trips_df=trips_df.reset_index()
     trips_by_day = get_days_of_trips(trips_df)
@@ -91,13 +87,12 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
     sat_count= count_days('Saturday',trips_by_day)
     sun_count= count_days('Sunday',trips_by_day)
     the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
-#import plotly.plotly as py
+
     pie_fig = {
     "data": [
              {
              "values": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
              "labels": [x for x in calendar.day_name],
-             #"name": "Company Ridership",
              "hoverinfo":"label+value",
              "type": "pie"
              },
@@ -111,7 +106,6 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
              {
              "y": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
              "x": [x for x in calendar.day_name],
-             #"name": "Company Ridership",
              "hoverinfo":"value",
              "type": "bar"
              },
@@ -121,8 +115,6 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
             "yaxis":{"title":"Number of Trips"}
             }
         }
-#trips_df = obs_in_days(firstday ,lastday , tdb)
-#the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
 
     bat_trips_df = trips_df.loc[trips_df['company_name']=='Bat']
     lemon_trips_df = trips_df.loc[trips_df['company_name']=='Lemon']
@@ -163,15 +155,10 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
                    )
 
     double_bar_fig = go.Figure(data=data, layout=layout)
-#py.iplot(double_bar_fig, filename='grouped-bar_trips')
-
 
     return pie_fig,bar_fig,double_bar_fig
 
-#py.iplot(fig, filename='trips_per_day')
-
 pie_fig,bar_fig,double_bar_fig = plot_trips_per_weekdays_for_interval(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb )
-#py.iplot(result_fig,filename='trips_per_day') # this generates plot inline
 
 pie_plot_url = py.plot(pie_fig, filename='trips_per_weekdayPie', auto_open=False,)
 bar_plot_url = py.plot(bar_fig, filename='trips_per_weekdayBar', auto_open=False,)
