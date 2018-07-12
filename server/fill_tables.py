@@ -39,17 +39,12 @@ def get_trip_data(url,con):
     # initialize rows
     d = {'company_name':[],
          'device_type':[],
-         'trip_id':[],
+         'device_id':[],
          'trip_duration':[],
          'trip_distance':[],
-         'start_point':[],
-         'end_point':[],
-         'accuracy':[],
          'route':[],
-         'sample_rate':[],
-         'device_id':[],
-         'start_time':[],
-         'end_time':[],
+         'accuracy':[],
+         'trip_id':[],
          'parking_verification':[],
          'standard_cost':[],
          'actual_cost':[]}
@@ -57,11 +52,9 @@ def get_trip_data(url,con):
         entry = datas[i]
         for k in d:
             if k in entry:
-                if k=='start_point' or k=='end_point':
-                    x = entry[k]['coordinates'][0]
-                    y = entry[k]['coordinates'][1]
-                    point = str((x,y))
-                    d[k].append(point)
+                if k=='route':
+                    route = json.dumps(entry[k])
+                    d[k].append(route)
                 else:
                     d[k].append(entry[k])
             else:
