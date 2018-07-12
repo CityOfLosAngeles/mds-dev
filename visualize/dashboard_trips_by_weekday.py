@@ -116,27 +116,27 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
              #trips_df = obs_in_days(firstday ,lastday , tdb)
 #the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
 
-bat_trips_df = trips_df.loc[trips_df['company_name']=='Bat']
-lemon_trips_df = trips_df.loc[trips_df['company_name']=='Lemon']
+    bat_trips_df = trips_df.loc[trips_df['company_name']=='Bat']
+    lemon_trips_df = trips_df.loc[trips_df['company_name']=='Lemon']
 
-bat_trips_by_day = get_days_of_trips(bat_trips_df)
-lemon_trips_by_day = get_days_of_trips(lemon_trips_df)
+    bat_trips_by_day = get_days_of_trips(bat_trips_df)
+    lemon_trips_by_day = get_days_of_trips(lemon_trips_df)
 
-bat_mon_count,lemon_mon_count = count_days('Monday',bat_trips_by_day),count_days('Monday',lemon_trips_by_day),
-bat_tues_count,lemon_tues_count = count_days('Tuesday',bat_trips_by_day), count_days('Tuesday',lemon_trips_by_day)
-bat_wed_count,lemon_wed_count = count_days('Wednesday',bat_trips_by_day),count_days('Wednesday',lemon_trips_by_day)
-bat_thurs_count,lemon_thurs_count = count_days('Thursday',bat_trips_by_day),count_days('Thursday',lemon_trips_by_day)
-bat_fri_count,lemon_fri_count = count_days('Friday',bat_trips_by_day),count_days('Friday',lemon_trips_by_day)
-bat_sat_count, lemon_sat_count = count_days('Saturday',bat_trips_by_day), count_days('Saturday',lemon_trips_by_day)
-bat_sun_count, lemon_sun_count = count_days('Sunday',bat_trips_by_day),count_days('Sunday',lemon_trips_by_day)
+    bat_mon_count,lemon_mon_count = count_days('Monday',bat_trips_by_day),count_days('Monday',lemon_trips_by_day),
+    bat_tues_count,lemon_tues_count = count_days('Tuesday',bat_trips_by_day), count_days('Tuesday',lemon_trips_by_day)
+    bat_wed_count,lemon_wed_count = count_days('Wednesday',bat_trips_by_day),count_days('Wednesday',lemon_trips_by_day)
+    bat_thurs_count,lemon_thurs_count = count_days('Thursday',bat_trips_by_day),count_days('Thursday',lemon_trips_by_day)
+    bat_fri_count,lemon_fri_count = count_days('Friday',bat_trips_by_day),count_days('Friday',lemon_trips_by_day)
+    bat_sat_count, lemon_sat_count = count_days('Saturday',bat_trips_by_day), count_days('Saturday',lemon_trips_by_day)
+    bat_sun_count, lemon_sun_count = count_days('Sunday',bat_trips_by_day),count_days('Sunday',lemon_trips_by_day)
 
-trace1 = go.Bar(
+    trace1 = go.Bar(
                 y=[bat_mon_count,bat_tues_count,bat_wed_count,bat_thurs_count,bat_fri_count,bat_sat_count,bat_sun_count ],
                 x= [x for x in calendar.day_name],
                 name='Bat'
                 )
 
-trace2 = go.Bar(
+    trace2 = go.Bar(
                 y=[lemon_mon_count,lemon_tues_count,lemon_wed_count,lemon_thurs_count,lemon_fri_count,lemon_sat_count,lemon_sun_count ],
                 x= [x for x in calendar.day_name],
                 name='Lemon'
