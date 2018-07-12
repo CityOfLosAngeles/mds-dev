@@ -1,13 +1,12 @@
-
 '''
     This file will generate an html file to serve as a precursor for a dashboard file.
     Current visuals: trips per day of week (pie chart, bar plot, grouped bar plot)
-    
+    ** modified for new dabase structure
     
     Name and Password fields will need to be changed for 'connect'.
     
     Author: Hannah Ross
-    '''
+'''
 
 import calendar
 import datetime
@@ -43,26 +42,30 @@ con = connect("hannah1ross","password","transit")
 tdb, scdb = get_data(con)
 
 def obs_in_month(month,pd_df):
+    start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     mo = month
-    vec=[datetime.datetime.utcfromtimestamp(x) for x in pd_df.start_time[0:len(pd_df)] if datetime.datetime.utcfromtimestamp(x).month==mo]
-    bool_vec = [d.month==mo for d in pd_df['start_time']]
+    vec=[datetime.datetime.utcfromtimestamp(x) for x in start_time[0:len(pd_df)] if datetime.datetime.utcfromtimestamp(x).month==mo]
+    bool_vec = [d.month==mo for d in start_time]
     return pd_df.loc[bool_vec]
 
 def obs_in_hour(hour,pd_df):
+    start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     hr = hour
-    vec=[datetime.datetime.utcfromtimestamp(x) for x in pd_df.start_time[0:len(pd_df)] if datetime.datetime.utcfromtimestamp(x).hour==hr]
-    bool_vec = [d.hour==hr for d in pd_df['start_time']]
+    vec=[datetime.datetime.utcfromtimestamp(x) for x in start_time[0:len(pd_df)] if datetime.datetime.utcfromtimestamp(x).hour==hr]
+    bool_vec = [d.hour==hr for d in start_time]
     return pd_df.loc[bool_vec]
 
 # first and last days must be unix time stamps    datetime.strptime('2015-10-20 22:24:46', '%Y-%m-%d %H:%M:%S')
 def obs_in_days(firstday,lastday,pd_df):
-    vec=[datetime.datetime.utcfromtimestamp(x) for x in pd_df.start_time[0:len(pd_df)] if ((datetime.datetime.utcfromtimestamp(x)<= firstday) & (datetime.datetime.utcfromtimestamp(x)>=lastday))]
-    bool_vec = [((datetime.datetime.utcfromtimestamp(d) >=firstday) & (datetime.datetime.utcfromtimestamp(d)<= lastday)) for d in pd_df['start_time']]
+    start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
+    vec=[datetime.datetime.utcfromtimestamp(x) for x in start_time[0:len(pd_df)] if ((datetime.datetime.utcfromtimestamp(x)<= firstday) & (datetime.datetime.utcfromtimestamp(x)>=lastday))]
+    bool_vec = [((datetime.datetime.utcfromtimestamp(d) >=firstday) & (datetime.datetime.utcfromtimestamp(d)<= lastday)) for d in start_time]
     return pd_df.loc[bool_vec]
 
 
 def get_days_of_trips(tripsdf):
-    return [calendar.day_name[datetime.datetime.utcfromtimestamp(x).weekday()] for x in tripsdf.start_time[0:len(tripsdf)]]
+    start_time = [tripsdf['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(tripsdf))]
+    return [calendar.day_name[datetime.datetime.utcfromtimestamp(x).weekday()] for x in start_time]
 
 
 def count_days(day,dayvec):
@@ -70,10 +73,16 @@ def count_days(day,dayvec):
     return sum(vec)
 
 def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
-    
-    #(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 4, 8, 33, 13) , tdb)
+
+#(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 4, 8, 33, 13) , tdb)
+#firstday = datetime.datetime(2018, 8, 3, 8, 32, 13)
+#lastday = datetime.datetime(2018, 8, 7, 8, 33, 13)
+
     trips_df = obs_in_days(firstday ,lastday , tdb)
+    trips_df=trips_df.reset_index()
     trips_by_day = get_days_of_trips(trips_df)
+
+
     mon_count = count_days('Monday',trips_by_day)
     tues_count = count_days('Tuesday',trips_by_day)
     wed_count = count_days('Wednesday',trips_by_day)
@@ -82,22 +91,21 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
     sat_count= count_days('Saturday',trips_by_day)
     sun_count= count_days('Sunday',trips_by_day)
     the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
-    #import plotly.plotly as py
-    
+#import plotly.plotly as py
     pie_fig = {
-        "data": [
-                 {
-                 "values": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
-                 "labels": [x for x in calendar.day_name],
-                 #"name": "Company Ridership",
-                 "hoverinfo":"label+value",
-                 "type": "pie"
-                 },
-                 ],
-            "layout": {
-            "title":"Trips per Day of Week from {}".format(the_interval),
-            }
+    "data": [
+             {
+             "values": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
+             "labels": [x for x in calendar.day_name],
+             #"name": "Company Ridership",
+             "hoverinfo":"label+value",
+             "type": "pie"
+             },
+             ],
+        "layout": {
+            "title":"Trips Per Day of Week from {}".format(the_interval),
         }
+    }
     bar_fig = {
     "data": [
              {
@@ -109,18 +117,23 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
              },
              ],
         "layout": {
-            "title":"Trips per Day of Week from {}".format(the_interval),
+            "title":"Trips Per Day of Week from {}".format(the_interval),
             "yaxis":{"title":"Number of Trips"}
             }
-            }
-             #trips_df = obs_in_days(firstday ,lastday , tdb)
+        }
+#trips_df = obs_in_days(firstday ,lastday , tdb)
 #the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
 
     bat_trips_df = trips_df.loc[trips_df['company_name']=='Bat']
     lemon_trips_df = trips_df.loc[trips_df['company_name']=='Lemon']
 
+# fix to reallign indexes for looping 0 to length inside get days of trips
+    bat_trips_df= bat_trips_df.reset_index()
+    lemon_trips_df=lemon_trips_df.reset_index()
+
     bat_trips_by_day = get_days_of_trips(bat_trips_df)
     lemon_trips_by_day = get_days_of_trips(lemon_trips_df)
+
 
     bat_mon_count,lemon_mon_count = count_days('Monday',bat_trips_by_day),count_days('Monday',lemon_trips_by_day),
     bat_tues_count,lemon_tues_count = count_days('Tuesday',bat_trips_by_day), count_days('Tuesday',lemon_trips_by_day)
@@ -141,18 +154,18 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
                 x= [x for x in calendar.day_name],
                 name='Lemon'
                 )
-    
+
     data=[trace1,trace2]
     layout = go.Layout(
-                       barmode='group',
-                       title="Trips per Day of Week from {}".format(the_interval),
-                       yaxis={"title":"Number of Trips"}
-                       )
-        
-                       double_bar_fig = go.Figure(data=data, layout=layout)
-                       #py.iplot(double_bar_fig, filename='grouped-bar_trips')
-                       
-                       
+                   barmode='group',
+                   title="Trips Per Day of Week from {}".format(the_interval),
+                   yaxis={"title":"Number of Trips"}
+                   )
+
+    double_bar_fig = go.Figure(data=data, layout=layout)
+#py.iplot(double_bar_fig, filename='grouped-bar_trips')
+
+
     return pie_fig,bar_fig,double_bar_fig
 
 #py.iplot(fig, filename='trips_per_day')
@@ -183,4 +196,5 @@ f = open('dash_testing.html','w')
 f.write(html_string)
 f.close()
 print('Done.')
+
 
