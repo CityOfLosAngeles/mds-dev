@@ -92,7 +92,7 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
              {
              "values": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
              "labels": [x for x in calendar.day_name],
-             "hoverinfo":"none",
+             #"hoverinfo":"label+value",
              "type": "pie"
              },
              ],
@@ -105,7 +105,7 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
              {
              "y": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
              "x": [x for x in calendar.day_name],
-             "hoverinfo":"none',
+             #"hoverinfo":"value",
              "type": "bar"
              },
              ],
