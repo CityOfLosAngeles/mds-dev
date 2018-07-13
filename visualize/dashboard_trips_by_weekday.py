@@ -46,21 +46,21 @@ def obs_in_month(month,pd_df):
     mo = month
     vec=[datetime.datetime.utcfromtimestamp(x) for x in start_time[0:len(pd_df)] if datetime.datetime.utcfromtimestamp(x).month==mo]
     bool_vec = [d.month==mo for d in start_time]
-    return pd_df.loc[bool_vec]
+    return pd_df.loc[bool_vec].reset_index()
 
 def obs_in_hour(hour,pd_df):
     start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     hr = hour
     vec=[datetime.datetime.utcfromtimestamp(x) for x in start_time[0:len(pd_df)] if datetime.datetime.utcfromtimestamp(x).hour==hr]
     bool_vec = [d.hour==hr for d in start_time]
-    return pd_df.loc[bool_vec]
+    return pd_df.loc[bool_vec].reset_index()
 
 # first and last days must be unix time stamps    datetime.strptime('2015-10-20 22:24:46', '%Y-%m-%d %H:%M:%S')
 def obs_in_days(firstday,lastday,pd_df):
     start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     vec=[datetime.datetime.utcfromtimestamp(x) for x in start_time[0:len(pd_df)] if ((datetime.datetime.utcfromtimestamp(x)<= firstday) & (datetime.datetime.utcfromtimestamp(x)>=lastday))]
     bool_vec = [((datetime.datetime.utcfromtimestamp(d) >=firstday) & (datetime.datetime.utcfromtimestamp(d)<= lastday)) for d in start_time]
-    return pd_df.loc[bool_vec]
+    return pd_df.loc[bool_vec].reset_index()
 
 
 def get_days_of_trips(tripsdf):
@@ -75,10 +75,9 @@ def count_days(day,dayvec):
 def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
 
     trips_df = obs_in_days(firstday ,lastday , tdb)
-    trips_df=trips_df.reset_index()
+    #trips_df=trips_df.reset_index()
     trips_by_day = get_days_of_trips(trips_df)
-
-
+    
     mon_count = count_days('Monday',trips_by_day)
     tues_count = count_days('Tuesday',trips_by_day)
     wed_count = count_days('Wednesday',trips_by_day)
@@ -93,7 +92,7 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
              {
              "values": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
              "labels": [x for x in calendar.day_name],
-             "hoverinfo":"label+value",
+             #"hoverinfo":"label+value",
              "type": "pie"
              },
              ],
@@ -106,7 +105,7 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
              {
              "y": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
              "x": [x for x in calendar.day_name],
-             "hoverinfo":"value",
+             #"hoverinfo":"value",
              "type": "bar"
              },
              ],
@@ -116,12 +115,12 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
             }
         }
 
-    bat_trips_df = trips_df.loc[trips_df['company_name']=='Bat']
-    lemon_trips_df = trips_df.loc[trips_df['company_name']=='Lemon']
+    bat_trips_df = trips_df.loc[trips_df['company_name']=='Bat'].reset_index()
+    lemon_trips_df = trips_df.loc[trips_df['company_name']=='Lemon'].reset_index()
 
 # fix to reallign indexes for looping 0 to length inside get days of trips
-    bat_trips_df= bat_trips_df.reset_index()
-    lemon_trips_df=lemon_trips_df.reset_index()
+#   bat_trips_df= bat_trips_df.reset_index()
+#    lemon_trips_df=lemon_trips_df.reset_index()
 
     bat_trips_by_day = get_days_of_trips(bat_trips_df)
     lemon_trips_by_day = get_days_of_trips(lemon_trips_df)
