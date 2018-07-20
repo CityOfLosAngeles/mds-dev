@@ -134,7 +134,7 @@ cte AS a INNER JOIN cte AS b
 ON a.n+1 = b.n
 WHERE a.event_type = 'available' and b.event_type <> 'available'
 
-CREATE VIEW IF NOT EXISTS geometry AS
+CREATE VIEW IF NOT EXISTS route_geometry AS
 
 WITH json_split AS (
 
