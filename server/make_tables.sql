@@ -41,4 +41,3 @@ CREATE TABLE IF NOT EXISTS status_change (
     battery_pct FLOAT NOT NULL,
     associated_trips UUID[]
 );
-

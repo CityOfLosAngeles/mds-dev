@@ -1,4 +1,4 @@
-CREATE VIEW availability_view AS
+CREATE VIEW availability AS
 
 WITH cte AS (
 	WITH no_repeat_table AS (
