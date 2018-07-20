@@ -1,0 +1,51 @@
+1.  Create Table information:
+The Create table statement creates a table. 
+Note: Please feel free to change the table name for your Schema. 
+
+CREATE TABLE public.sc3
+(
+    company_name character varying(50),
+    device_type character varying(50),
+    device_id character varying(50),
+    event_type character varying(50),
+    reason character varying(50),
+    event_time bigint,
+    location point,
+    battery_pct double precision,
+    associated_trips uuid[]
+)
+
+2. VIEW
+Note: Please feel free to change the view name and ( Please feel free to change the table name for your Schema)
+
+CREATE VIEW ViewStatusChange as 
+
+with cte as (	
+ SELECT *,
+    row_number() OVER (order by device_id,event_time,event_type) as rownum2
+  FROM sc3
+	)
+Select 
+a.company_name,
+a.device_type,
+a.device_id, 
+a.event_type as start_event_type,
+b.event_type as end_event_type,
+a.location,
+a.reason as start_reason,
+
+
+b.reason as end_reason,
+a.event_time as start_time,
+b.event_time as end_time
+
+
+from 
+cte as A
+inner join cte as B 
+on A.rownum2 +1 = B.rownum2
+
+where a.event_type ='available'
+and b.event_type <> 'available'
+
+
