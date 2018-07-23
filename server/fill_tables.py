@@ -29,7 +29,51 @@ def connect(user, password, db, host, port):
     con = sqlalchemy.create_engine(url)
     return con
 
-def get_trip_data(url,con):
+def get_data(url,con,mode):
+    try:
+        data = requests.get(url)
+    except requests.exceptions.RequestException as error:
+        print(error)
+        return None
+    if mode=="trips":
+        d = {'company_name':[],
+             'device_type':[],
+             'device_id':[],
+             'trip_duration':[],
+             'trip_distance':[],
+             'route':[],
+             'accuracy':[],
+             'trip_id':[],
+             'parking_verification':[],
+             'standard_cost':[],
+             'actual_cost':[]}
+        next_url = get_trip_data(d,data.json()['first'])
+    elif mode=="status_changes":
+        d = {'company_name':[],
+             'device_type':[],
+             'device_id':[],
+             'event_type':[],
+             'reason':[],
+             'event_time':[],
+             'location':[],
+             'battery_pct':[],
+             'associated_trips':[]}
+        next_url = get_status_change_data(d,data.json()['first'])
+    else:
+        d = None
+        next_url = None
+    while next_url!="null":
+        if mode=="trips":
+            next_url = get_trip_data(d,next_url)
+        elif mode=="status_changes":
+            next_url = get_status_change_data(d,next_url)
+        df = pd.DataFrame.from_dict(d)
+    if mode=="trips":
+        df.to_sql('trips',con,if_exists='append',index=False)
+    elif mode=="status_changes":
+        df.to_sql('status_change',con,if_exists='append',index=False)
+
+def get_trip_data(d,url):
     try:
         data = requests.get(url)
     except requests.exceptions.RequestException as error:
@@ -37,17 +81,6 @@ def get_trip_data(url,con):
         return None
     datas = data.json()['data']
     # initialize rows
-    d = {'company_name':[],
-         'device_type':[],
-         'device_id':[],
-         'trip_duration':[],
-         'trip_distance':[],
-         'route':[],
-         'accuracy':[],
-         'trip_id':[],
-         'parking_verification':[],
-         'standard_cost':[],
-         'actual_cost':[]}
     for i in range(len(datas)):
         entry = datas[i]
         for k in d:
@@ -59,26 +92,15 @@ def get_trip_data(url,con):
                     d[k].append(entry[k])
             else:
                 d[k].append(None)
-    df = pd.DataFrame(data=d)
-    df.to_sql('trips',con,if_exists='append',index=False)
+    return data.json()['next']
 
-def get_status_change_data(url,con):
+def get_status_change_data(d,url):
     try:
         data = requests.get(url)
     except requests.exceptions.RequestException as error:
         print(error)
         return None
     datas = data.json()['data']
-    # initialize rows
-    d = {'company_name':[],
-         'device_type':[],
-         'device_id':[],
-         'event_type':[],
-         'reason':[],
-         'event_time':[],
-         'location':[],
-         'battery_pct':[],
-         'associated_trips':[]}
     for i in range(len(datas)):
         entry = datas[i]
         for k in d:
@@ -92,8 +114,7 @@ def get_status_change_data(url,con):
                     d[k].append(entry[k])
             else:
                 d[k].append(None)
-    df = pd.DataFrame(data=d)
-    df.to_sql('status_change',con,if_exists='append',index=False)
+    return data.json()['next']
 
 user = args.user
 password = args.password
@@ -113,10 +134,10 @@ with open(args.filename) as f:
         print("Writing data: {} - {}".format(entries[0],entries[1]))
         if entries[1] == 'status_changes':
             print("Writing status changes.")
-            get_status_change_data(entries[0],con)
+            get_data(entries[0],con,entries[1])
         elif entries[1] == 'trips':
             print("Writing trips.")
-            get_trip_data(entries[0],con)
+            get_data(entries[0],con,entries[1])
         print("Done")
         print()
 

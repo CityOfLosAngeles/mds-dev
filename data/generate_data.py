@@ -22,6 +22,7 @@ import time
 import uuid
 import shapely.wkt
 import json
+import os
 
 # generate district 10 boundary using gps coordinates
 # also used to make json for service areas
@@ -60,8 +61,6 @@ def make_service_area(company_name):
     f = open(company_name+"_service_area"+".json",'w')
     f.write(json.dumps(data,indent=4,separators=(',',': ')))
 
-make_service_area("bat")
-make_service_area("lemon")
 
 # returns a random point somewhere in the city of LA
 def get_random_point():
@@ -151,6 +150,7 @@ def make_feature(point, time):
     feature["geometry"]["coordinates"] = [point.x, point.y]
     return feature
 
+# generates one days worth of data for one device
 def generate_day_data(day,device_id,company_name,device_type,url):
     trip_data = []
     status_change_data = []
@@ -288,6 +288,8 @@ def generate_day_data(day,device_id,company_name,device_type,url):
 
     return trip_data,status_change_data
 
+# creates dataframe using day data
+# creates num_units devices, generating data for their trips for a month
 def make_dataframes(company_name, device_type,url,num_units):
     trip_data = []
     status_change_data = []
@@ -302,12 +304,25 @@ def make_dataframes(company_name, device_type,url,num_units):
     return trip_data, status_change_data
 
 # convert trip data into json
-def trip_convert(db,output_file):
+def trip_convert(db,output_folder):
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    pages = []
     data = {}
-    data['data'] = []
     i = 0
     num_rows = len(db)
+    page = 1
+    data['data'] = []
+    data['first'] ="http://localhost:8000/" + output_folder + "/" + str(page) + ".json"
+    data['prev'] = "null"
     for d in db:
+        if i%50==0 and i>0:
+            pages.append(data)
+            page += 1
+            data = {}
+            data['data'] = []
+            data['first'] = "http://localhost:8000/" + output_folder + "/1.json"
+            data['prev'] = "http://localhost:8000/" + output_folder + "/" + str(page-1) + ".json"
         if i%5000==0:
             print("{} of {}".format(i,num_rows))
         d['device_id'] = str(d['device_id'])
@@ -319,17 +334,38 @@ def trip_convert(db,output_file):
         d['actual_cost'] = int(d['actual_cost'])
         data['data'].append(d)
         i+=1
-    result = json.dumps(data,indent=4,separators=(',',': '))
-    f = open(output_file,'w')
-    f.write(result)
+    last = page-1
+    for i in range(len(pages)):
+        if i<len(pages)-1:
+            pages[i]['next'] = "http://localhost:8000/" + output_folder + "/" + str(i+2) + ".json"
+        else:
+            pages[i]['next'] = "null"
+        pages[i]['last'] = "http://localhost:8000/" + output_folder + "/" + str(last) + ".json" 
+        result = json.dumps(pages[i],indent=4,separators=(',',': '))
+        f = open(output_folder + "/" + str(i+1) + ".json",'w')
+        f.write(result)
 
-# convert availability data into json
-def status_change_convert(db,output_file):
+# convert status change data into json
+def status_change_convert(db,output_folder):
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    pages = []
     data = {}
-    data['data'] = []
     i = 0
     num_rows = len(db)
+    page = 1
+    first = output_folder + "/" + str(page) + ".json"
+    data['data'] = []
+    data['first'] = "http://localhost:8000/" + output_folder + "/" + str(page) + ".json"
+    data['prev'] = "null"
     for d in db:
+        if i%50==0 and i>0:
+            pages.append(data)
+            page += 1
+            data = {}
+            data['data'] = []
+            data['first'] = "http://localhost:8000/" + output_folder + "/1.json"
+            data['prev'] = "http://localhost:8000/" + output_folder + "/" + str(page-1) + ".json"
         if i%5000==0:
             print("{} of {}".format(i,num_rows))
         d['device_id'] = str(d['device_id'])
@@ -341,9 +377,19 @@ def status_change_convert(db,output_file):
         d['battery_pct'] = float(d['battery_pct'])
         data['data'].append(d)
         i += 1
-    result = json.dumps(data,indent=4,separators=(',',': '))
-    f = open(output_file,'w')
-    f.write(result)
+    last = page-1
+    for i in range(len(pages)):
+        if i<len(pages)-1:
+            pages[i]['next'] = "http://localhost:8000/" + output_folder + "/" + str(i+2) + ".json"
+        else:
+            pages[i]['next'] = "null"
+        pages[i]['last'] = "http://localhost:8000/" + output_folder + "/" + str(last) + ".json"
+        result = json.dumps(pages[i],indent=4,separators=(',',': '))
+        f = open(output_folder + "/" + str(i+1) + ".json",'w')
+        f.write(result)
+
+make_service_area("bat")
+make_service_area("lemon")
 
 print("Generating bat data.")
 btrips,bsc = make_dataframes("Bat","scooter","bat.co",100)
@@ -354,16 +400,17 @@ ltrips,lsc = make_dataframes("Lemon","scooter","lemonbike.com",100)
 print("Done.")
 
 print("Writing Bat Trips JSON")
-trip_convert(btrips,'bat_trips.json')
-print("Done.")
-
-print("Writing Lemon Trips JSON")
-trip_convert(ltrips,'lemon_trips.json')
+trip_convert(btrips,'bat_trips')
 print("Done.")
 
 print("Writing Bat Status Change JSON")
-status_change_convert(bsc,'bat_status_change.json')
+status_change_convert(bsc,'bat_status_change')
 print("Done.")
+
+print("Writing Lemon Trips JSON")
+trip_convert(ltrips,'lemon_trips')
+print("Done.")
+
 print("Writing Lemon Status Change JSON")
-status_change_convert(lsc,'lemon_status_change.json')
+status_change_convert(lsc,'lemon_status_change')
 print("Done.")
