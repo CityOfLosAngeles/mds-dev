@@ -19,10 +19,19 @@ import pandas
 from mapboxgl.utils import *
 from mapboxgl.viz import *
 import fiona
+
+from ast import literal_eval
+import shapely
 import shapely.wkt
 import shapely.geometry
 import sqlalchemy
 import pyproj
+
+import urllib, json
+import shapefile
+from shapely.geometry import shape,mapping, Point, Polygon, MultiPolygon
+import shapely.ops
+from osgeo import ogr
 
 def connect(user,password,db,host='localhost',port=5432):
     url = 'postgresql://{}:{}@{}:{}/{}'
@@ -152,7 +161,7 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
 pie_fig,bar_fig,double_bar_fig = plot_trips_per_weekdays_for_interval(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb )
 
 # get urls of images for trips per day
-print "Building plot: 1"
+print "Building plot: 1 of 8"
 pie_plot_url = py.plot(pie_fig, filename='trips_per_weekdayPie', auto_open=False,)
 print "Building plot: 2"
 bar_plot_url = py.plot(bar_fig, filename='trips_per_weekdayBar', auto_open=False,)
@@ -189,7 +198,7 @@ def plot_trips_per_hour(tdb):
     layout.xaxis={
     'type': 'date',
     'tickformat': '%H:%M',
-    'tickangle':'45',
+#'tickangle':'45',
     }
     layout.xaxis=dict(title= "Hour of Day",tickmode='linear')
     layout.plot_bgcolor='rgb(11, 0, 0)'
@@ -236,10 +245,11 @@ company_plot_url = plot_trips_per_company(tdb,datetime.datetime(2018, 8, 3, 8, 3
 # for trips, does not record status change service dropoff at start of day.
 # get each council district boundary'
 
+
 bounds = fiona.open('/Users/hannah1ross/Desktop/mds-dev/data/CouncilDistricts.shp')# fix file path issue
 
 all_bounds = []
-for i in range(12):
+for i in range(14):
     original = pyproj.Proj(bounds.crs)
     dest = pyproj.Proj(init='epsg:4326')
     polygons = []
@@ -268,8 +278,8 @@ def plot_trips_per_cd(tdb):
     
     lemon_dc_counts = []
     bat_dc_counts = []
-    # count the number of trips beginning in each dc
-    for i in range(12):
+    # count the number of trips beginning in each of teh 15 council districts
+    for i in range(len(all_bounds)):
         boundary = all_bounds[i]
         bat_dc_count = 0
         lemon_dc_count = 0
@@ -282,20 +292,20 @@ def plot_trips_per_cd(tdb):
                 lemon_dc_count = lemon_dc_count + 1
         lemon_dc_counts.append(lemon_dc_count)
         bat_dc_counts.append(bat_dc_count)
-    
+
     # plotting trips per council district (double bar per company)
     trace1 = go.Bar(
                     y=[count for count in bat_dc_counts ],
-                    x= [x+1 for x in range(12)],
+                    x= [x+1 for x in range(14)],
                     name='Bat'
                     )
 
     trace2 = go.Bar(
                 y=[count for count in lemon_dc_counts ],
-                x= [x+1 for x in range(12)],
+                x= [x+1 for x in range(14)],
                 name='Lemon'
                 )
-    
+
     data=[trace1,trace2]
     layout = go.Layout(
                        barmode='group',
@@ -305,10 +315,10 @@ def plot_trips_per_cd(tdb):
                        )
         
     trips_per_cd_fig = go.Figure(data=data, layout=layout)
-    return py.plot(trips_per_cd_fig,filename='trips_per_cd', auto_open=False,)
+    return py.plot(trips_per_cd_fig,auto_open = False)
 
-print "Building plot: 6"
-trips_per_cd_plot_url = plot_trips_per_cd(tdb)
+print "Building plot: 6 "
+trips_per_cd_url = plot_trips_per_cd(tdb)
 
 
 # show chart of the most common reasons for device availability
@@ -350,6 +360,228 @@ print "Building plot: 7"
 availability_pie_url = plot_availability_piechart(scdb)
 
 
+# create a sankey plot for each company for flows of trips between equity zones
+'''
+def read_poly(poly, original, dest):
+    interior = []
+    exterior = []
+    for p in poly:
+        new_list = []
+        for x,y in p:
+            x_prime, y_prime = pyproj.transform(original, dest, x, y)
+            p = (x_prime, y_prime)
+            new_list.append(p)
+        if exterior == []:
+            exterior = new_list
+        else:
+            interior.append(new_list)
+    final_area = shapely.geometry.Polygon(exterior, interior)
+    return final_area
+
+def read_area(file_name):
+    area = fiona.open(file_name)
+    original = pyproj.Proj(area.crs)
+    dest = pyproj.Proj(init='epsg:4326')
+    multi_polygon = []
+    for a in area:
+        a_type = a['geometry']['type']
+        if a_type == "MultiPolygon":
+            for poly in a['geometry']['coordinates']:
+                multi_polygon.append(read_poly(poly, original, dest))
+        elif a_type == "Polygon":
+            multi_polygon.append(read_poly(a['geometry']['coordinates'], original, dest))
+    return shapely.ops.cascaded_union(multi_polygon)
+
+
+city_boundary = read_area('/Users/hannah1ross/Desktop/mds-dev/data/City_Boundary.shp')
+sf_equity = read_area('/Users/hannah1ross/Desktop/mds-dev/data/San_Fernando_Valley.shp')
+non_sf_equity = read_area('/Users/hannah1ross/Desktop/mds-dev/data/Non_San_Fernando.shp')
+
+lemon_trips = tdb.loc[tdb['company_name']=='Lemon'].reset_index()
+bat_trips = tdb.loc[tdb['company_name']=='Bat'].reset_index()
+
+lemon_trip_starts = [] # list of lat longs to be converted into geometry points Points
+bat_trip_starts = []
+for i in range(len(lemon_trips)):
+    lemon_trip_starts.append(lemon_trips['route'][i]['features'][0]['geometry']['coordinates'])
+for i in range(len(bat_trips)):
+    bat_trip_starts.append(bat_trips['route'][i]['features'][0]['geometry']['coordinates'])
+
+lemon_trip_ends = []
+bat_trip_ends = []
+for i in range(len(lemon_trips)):
+    lemon_trip_ends.append(lemon_trips['route'][i]['features'][1]['geometry']['coordinates'])
+for i in range(len(bat_trips)):
+    bat_trip_ends.append(bat_trips['route'][i]['features'][1]['geometry']['coordinates'])
+
+'''
+# currently only council district 10 so there will be NO TRIPS STARTS OR ENDS IN THE SF VALLEY EQUITY ZONE
+val_to_val = 100
+val_to_nonval = 20
+val_to_city = 32
+
+nonval_to_nonval = 23
+nonval_to_val = 20
+nonval_to_city = 80
+
+city_to_city = 04
+city_to_val = 120
+city_to_nonval = 50
+'''
+for i in range(len(lemon_trip_starts[-1000:-1])):
+    startpt = shapely.geometry.Point(lemon_trip_starts[i])
+    endpt = shapely.geometry.Point(lemon_trip_ends[i])
+    if (sf_equity.contains(startpt)):
+        if non_sf_equity.contains(endpt):
+            val_to_nonval=val_to_nonval + 1
+        elif sf_equity.contains(endpt):
+            val_to_val = val_to_val + 1
+        else:
+            val_to_city = val_to_city + 1
+    elif (non_sf_equity.contains(startpt)):
+        # print "made it here", i
+        if non_sf_equity.contains(endpt):
+            nonval_to_nonval= nonval_to_nonval + 1
+        elif sf_equity.contains(endpt):
+            nonval_to_val = nonval_to_val + 1
+        else:
+            nonval_to_city = nonval_to_city + 1
+    elif  (city_boundary .contains(startpt)):
+        if non_sf_equity.contains(endpt):
+            city_to_nonval= city_to_nonval + 1
+        elif sf_equity.contains(endpt):
+            city_to_val = city_to_val + 1
+        else:
+            city_to_city = city_to_city + 1
+    else:
+        None
+
+# hard code to compensate for only district 10 points
+val_to_val = 100
+val_to_nonval = 20
+val_to_city = 32
+
+nonval_to_val = 20
+city_to_val = 120
+'''
+data = dict(
+            type='sankey',
+            node = dict(
+                        pad = 10,
+                        thickness = 30,
+                        line = dict(
+                                    color = "black",
+                                    width = 0
+                                    ),
+                        label = ["San Fernando Valley Equity Zone", "Non San Fernando Valley Equity Zone", "Non-Equity City Zone","San Fernando Valley Equity Zone", "Non San Fernando Valley Equity Zone", "Non-Equity City Zone"],
+                        color = ["#4994CE", "#ff853d", "#80b280", "#4994CE", "#ff853d", "#80b280"]
+                        ),
+            link = dict(
+                        source = [0,0,0,1,1,1,2,2,2],
+                        target = [3,4,5,4,3,5,5,3,4],
+                        value = [val_to_val, val_to_nonval, val_to_city,
+                                 nonval_to_nonval, nonval_to_val, nonval_to_city,
+                                 city_to_city, city_to_val, city_to_nonval],
+                        color = [ "#a6cbe7", "#a6cbe7", "#a6cbe7","#ffc2a3", "#ffc2a3", "#ffc2a3", "#b2d1b2", "#b2d1b2", "#b2d1b2"]
+                        
+                        )
+            )
+    
+layout =  dict(
+                   title = "Lemon Trip Paths by Equity Zone <br>",
+                   font = dict(
+                               size = 12
+                               ),
+                   updatemenus= [
+                                 dict(
+                                      y=1,
+                                      buttons=[
+                                               dict(
+                                                    label='Light',
+                                                    method='relayout',
+                                                    args=['paper_bgcolor', 'white']
+                                                    ),
+                                               dict(
+                                                    label='Dark',
+                                                    method='relayout',
+                                                    args=['paper_bgcolor', 'grey']
+                                                    )
+                                               ]
+                                      
+                                      ),
+                                 dict(
+                                      y=0.6,
+                                      buttons=[
+                                               dict(
+                                                    label='Horizontal',
+                                                    method='restyle',
+                                                    args=['orientation', 'h']
+                                                    ),
+                                               dict(
+                                                    label='Vertical',
+                                                    method='restyle',
+                                                    args=['orientation', 'v']
+                                                    )
+                                               ]
+                                      
+                                      )
+                                 ]
+                   )
+
+
+fig = dict(data=[data], layout=layout)
+print "Building plot: 8 "
+lemon_sankey_plot_url = py.plot(fig, validate=False,auto_open=False)
+
+
+# create map of event_types
+scdb_small = scdb.head(100)
+start_points =[literal_eval(scdb_small['location'][i]) for i in scdb_small['location'].index]
+events = [scdb_small['event_type'][i] for i in range(len(scdb_small))]
+
+# create dataframes for startpoints and endpoints with lat and long coords
+start_d = {'lat':[], 'lon':[],'event_type':[]}
+
+for start_p in start_points:
+    start_lon,start_lat = start_p[0],start_p[1]
+    start_d['lat'].append(start_lat)
+    start_d['lon'].append(start_lon)
+
+for event_type in events:
+    start_d['event_type'].append(event_type)
+
+startdb = pandas.DataFrame.from_dict(start_d)
+WELL_COLORS = dict(available= 'rgb(139,195,74)', unavailable = 'yellow', reserved= 'rgb(2,136,209)', removed='rgb(211,47,47)' )
+traces = []
+for ev_type, dff in startdb.groupby('event_type'):
+    trace = dict(
+                 type='scattermapbox',
+                 lon=dff['lon'],
+                 lat=dff['lat'],
+                 name= ev_type,
+                 text = ev_type,
+                 marker=dict(
+                             size=11,
+                             opacity=1,
+                             color=WELL_COLORS[ev_type]
+                             ),
+                 )
+    traces.append(trace)
+
+lay = go.Layout()
+lay['hovermode']='closest'
+lay['autosize'] = True
+lay['mapbox']['zoom'] = 11
+lay['mapbox']['center']=dict(
+                             lon=-118.33,
+                             lat=34.017)
+lay['mapbox']['bearing']=0
+lay['title'] = 'Locations of Scooter Statuses<br>(select legend to inspect an event type)'
+
+map_fig = go.Figure(data = traces,layout = lay)
+print "Building plot: 9"
+event_map_url = py.plot(map_fig,auto_open=False)
+
 # configure the html with all plot urls
 html_string = '''
     <html>
@@ -370,20 +602,30 @@ html_string = '''
         <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
         src="''' + company_plot_url + '''.embed?width=900&height=550"></iframe>
             
-        <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="yes" \
-            src="''' + trips_per_cd_plot_url + '''.embed?width=900&height=550"></iframe>
-                
+            
+        <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
+            src="''' + trips_per_cd_url + '''.embed?width=900&height=550"></iframe>
+            
+      
         <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="yes" \
                 src="''' + availability_pie_url + '''.embed?width=900&height=550"></iframe>
         
-            
+        <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
+        src="''' + lemon_sankey_plot_url + '''.embed?width=900&height=550"></iframe>
+                    
+        <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="yes" \
+                    src="''' + event_map_url + '''.embed?width=900&height=550"></iframe>
+                    
             </html>
  '''
-
 print('Generating \'dash_testing.html\' ...')
 f = open('dash_testing.html','w')
 f.write(html_string)
 f.close()
 print('Done.')
+
+
+
+
 
 
