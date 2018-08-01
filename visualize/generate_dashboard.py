@@ -1,7 +1,10 @@
 '''
-This script generates an html file 'dash_testing.html' of dashboard visualizations for the trips and status_change data.
+This script generates an html file 'dash_testing.html' with visualizations for
+the trips and status_change data.
+
+To run in command line, follow with postgres username, password, and database name as arguments
     
-Name and Password fields will need to be changed for 'connect' to read in data from the server.
+* filepaths still need to be changed for reading shapefiles
     
 Author: Hannah Ross
 '''
@@ -18,7 +21,7 @@ import ast
 import pandas
 from mapboxgl.utils import *
 from mapboxgl.viz import *
-import fiona
+import argparse
 
 from ast import literal_eval
 import shapely
@@ -32,6 +35,13 @@ import shapefile
 from shapely.geometry import shape,mapping, Point, Polygon, MultiPolygon
 import shapely.ops
 from osgeo import ogr
+import plotly
+from controls import COMPANIES, SETS
+import fiona
+
+username = SETS['username']
+api_key=SETS['api_key']
+plotly.tools.set_credentials_file(username=username, api_key=api_key)
 
 def connect(user,password,db,host='localhost',port=5432):
     url = 'postgresql://{}:{}@{}:{}/{}'
@@ -39,31 +49,60 @@ def connect(user,password,db,host='localhost',port=5432):
     con = sqlalchemy.create_engine(url)
     return con
 
+# for real data, will modify to retrieve data for most recent week's interval as measured by current time - 7 days
+# for fake data, this function pulls 1 random week's information from the interval we generated data for
 def get_data(con):
     trips_db = pandas.read_sql('SELECT * FROM "trips"',con,index_col=None)
-    status_change_db = pandas.read_sql('SELECT * FROM "status_change"',con,
-                                       index_col=None)
+    
+    status_change_db = pandas.read_sql('SELECT * FROM "status_change" WHERE to_timestamp(event_time) > to_timestamp(1533416032) AND to_timestamp(event_time) < to_timestamp(1533416032)+ INTERVAL \'7 DAY\'',con, index_col=None)
+
     return (trips_db,status_change_db)
 
+parser = argparse.ArgumentParser()
+parser.add_argument("user", type=str,
+                    help="username to access postgresql database")
+parser.add_argument("password", type=str,
+                    help="password to access postgresql database")
+parser.add_argument("database", type=str,
+                    help="database name")
+parser.add_argument("--host","-H", type=str,
+                    help="database host")
+parser.add_argument("--port","-p", type=str,
+                    help="database port")
+args = parser.parse_args()
+
+# extract arguments to connect to server
+user = args.user
+password = args.password
+db = args.database
+host = "localhost"
+if args.host is not None:
+    host = args.host
+port = 5432
+if args.port is not None:
+    port = args.port
+
 # read in trips and status_change data from the server
-con = connect("hannah1ross","password","transit")
+con = connect(user,password,db,host,port)
 tdb, scdb = get_data(con)
 
-# returns trip observations in a given month's time frame
+
+# Helper functions:
+# returns trip data base observations that occur within a given month's time frame
 def obs_in_month(month,pd_df):
     start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     mo = month
     bool_vec = [datetime.datetime.utcfromtimestamp(d).month==mo for d in start_time]
     return pd_df.loc[bool_vec].reset_index()
 
-# return trip observations in a given hour's time frame - not day specific
+# returns trip data base observations that occur in a given hour's time frame - not day specific
 def obs_in_hour(hour,pd_df):
     start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     hr = hour
     bool_vec = [datetime.datetime.utcfromtimestamp(d).hour==hr for d in start_time]
     return pd_df.loc[bool_vec].reset_index()
 
-# return trip observations within a period of 2 specified days  (days are datetime objects)
+# returns trip database observations that occur  within a period of 2 specified days  (days are datetime objects)
 def obs_in_days(firstday,lastday,pd_df):
     start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     bool_vec = [((datetime.datetime.utcfromtimestamp(d) >=firstday) & (datetime.datetime.utcfromtimestamp(d)<= lastday)) for d in start_time]
@@ -74,101 +113,60 @@ def get_days_of_trips(tripsdf):
     start_time = [tripsdf['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(tripsdf))]
     return [calendar.day_name[datetime.datetime.utcfromtimestamp(x).weekday()] for x in start_time]
 
-# counts the frequency of each day given vector of days for plotting trips per day of week
+# counts the frequency of each day given a list of days, to be used for plotting trips per day of week
 def count_days(day,dayvec):
     vec=[dayvec[i]==day for i in range(len(dayvec))]
     return sum(vec)
 
-# returns 3 plots for the number of trips taken per day of week (pie chart, bar plot, & double bar plot)
+# returns a double bar plot for the number of trips taken per day of week for each company *can select  legend to view one company at a time
 def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
-
-    trips_df = obs_in_days(firstday ,lastday , tdb)
-    trips_by_day = get_days_of_trips(trips_df)
+    init_trips_df = obs_in_days(firstday ,lastday , tdb)
     
-    mon_count = count_days('Monday',trips_by_day)
-    tues_count = count_days('Tuesday',trips_by_day)
-    wed_count = count_days('Wednesday',trips_by_day)
-    thurs_count = count_days('Thursday',trips_by_day)
-    fri_count = count_days('Friday',trips_by_day)
-    sat_count= count_days('Saturday',trips_by_day)
-    sun_count= count_days('Sunday',trips_by_day)
+    # capture the week of the current report
     the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
+    
+    # capture the number of companies
+    num_cos = len(COMPANIES)
+    traces=[]
+    for i in range(num_cos):
+        cur_name = COMPANIES[i]
+        trips_df = init_trips_df
+        trips_df = trips_df.loc[trips_df['company_name'] ==  cur_name].reset_index()
+        
+        trips_by_day = get_days_of_trips(trips_df)
 
-    pie_fig = {
-    "data": [
-             {
-             "values": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
-             "labels": [x for x in calendar.day_name],
-             "type": "pie"
-             },
-             ],
-        "layout": {
-            "title":"Trips Per Day of Week from {}".format(the_interval),
-        }
-    }
-    bar_fig = {
-    "data": [
-             {
-             "y": [mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
-             "x": [x for x in calendar.day_name],
-             "type": "bar"
-             },
-             ],
-        "layout": {
-            "title":"Trips Per Day of Week from {}".format(the_interval),
-            "yaxis":{"title":"Number of Trips"}
-            }
-        }
-
-    bat_trips_df = trips_df.loc[trips_df['company_name']=='Bat'].reset_index()
-    lemon_trips_df = trips_df.loc[trips_df['company_name']=='Lemon'].reset_index()
-
-    bat_trips_by_day = get_days_of_trips(bat_trips_df)
-    lemon_trips_by_day = get_days_of_trips(lemon_trips_df)
-
-
-    bat_mon_count,lemon_mon_count = count_days('Monday',bat_trips_by_day),count_days('Monday',lemon_trips_by_day),
-    bat_tues_count,lemon_tues_count = count_days('Tuesday',bat_trips_by_day), count_days('Tuesday',lemon_trips_by_day)
-    bat_wed_count,lemon_wed_count = count_days('Wednesday',bat_trips_by_day),count_days('Wednesday',lemon_trips_by_day)
-    bat_thurs_count,lemon_thurs_count = count_days('Thursday',bat_trips_by_day),count_days('Thursday',lemon_trips_by_day)
-    bat_fri_count,lemon_fri_count = count_days('Friday',bat_trips_by_day),count_days('Friday',lemon_trips_by_day)
-    bat_sat_count, lemon_sat_count = count_days('Saturday',bat_trips_by_day), count_days('Saturday',lemon_trips_by_day)
-    bat_sun_count, lemon_sun_count = count_days('Sunday',bat_trips_by_day),count_days('Sunday',lemon_trips_by_day)
-
-    trace1 = go.Bar(
-        y=[bat_mon_count,bat_tues_count,bat_wed_count,bat_thurs_count,bat_fri_count,bat_sat_count,bat_sun_count ],
-            x= [x for x in calendar.day_name],
-            name='Bat'
-            )
-
-    trace2 = go.Bar(
-            y=[lemon_mon_count,lemon_tues_count,lemon_wed_count,lemon_thurs_count,lemon_fri_count,lemon_sat_count,lemon_sun_count ],
-                x= [x for x in calendar.day_name],
-                name='Lemon'
-                )
-
-    data=[trace1,trace2]
+        mon_count = count_days('Monday',trips_by_day)
+        tues_count = count_days('Tuesday',trips_by_day)
+        wed_count  = count_days('Wednesday',trips_by_day)
+        thurs_count = count_days('Thursday',trips_by_day)
+        fri_count  = count_days('Friday',trips_by_day)
+        sat_count  = count_days('Saturday',trips_by_day)
+        sun_count = count_days('Sunday',trips_by_day)
+        
+        trace = go.Bar(
+                       y=[mon_count,tues_count,wed_count,thurs_count,fri_count,sat_count,sun_count ],
+                       x= [x for x in calendar.day_name],
+                       name=COMPANIES[i]
+                       )
+        traces.append(trace)
+    
+    data=traces
     layout = go.Layout(
-                   barmode='group',
-                   title="Trips Per Day of Week from {}".format(the_interval),
-                   yaxis={"title":"Number of Trips"}
-                   )
-
+                       barmode='group',
+                       title="Trips Per Day of Week from {}".format(the_interval),
+                       yaxis={"title":"Number of Trips"}
+                       )
+        
     double_bar_fig = go.Figure(data=data, layout=layout)
+                       
+    return double_bar_fig
 
-    return pie_fig,bar_fig,double_bar_fig
+double_bar_fig = plot_trips_per_weekdays_for_interval(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb )
 
-pie_fig,bar_fig,double_bar_fig = plot_trips_per_weekdays_for_interval(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb )
-
-# get urls of images for trips per day
-print "Building plot: 1 of 8"
-pie_plot_url = py.plot(pie_fig, filename='trips_per_weekdayPie', auto_open=False,)
-print "Building plot: 2"
-bar_plot_url = py.plot(bar_fig, filename='trips_per_weekdayBar', auto_open=False,)
 print "Building plot: 3"
 double_plot_url = py.plot(double_bar_fig, filename='trips_per_weekdayDoubleBar', auto_open=False,)
 
-# used for plotting trips per hour
+# helper function used for plotting trips per hour
 def to_twelve_hour(hour):
     if hour > 12:
         new=hour-12
@@ -180,7 +178,7 @@ def to_twelve_hour(hour):
     else:
         return str(hour)+'AM'
 
-# plot the number of trips taken per hour
+# plots the number of trips taken per hour as a bar chart
 def plot_trips_per_hour(tdb):
     start_times = [tdb['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(tdb))]
     hour_vec=[datetime.datetime.fromtimestamp(d).hour for d in start_times]
@@ -198,19 +196,18 @@ def plot_trips_per_hour(tdb):
     layout.xaxis={
     'type': 'date',
     'tickformat': '%H:%M',
-#'tickangle':'45',
     }
     layout.xaxis=dict(title= "Hour of Day",tickmode='linear')
     layout.plot_bgcolor='rgb(11, 0, 0)'
     hours_fig=go.Figure(data=data,layout=layout)
     return py.plot(hours_fig, filename='trips_per_hour', auto_open=False,)
 
-# can filter tdb using obs_in functions for date window specification
+# can filter trips database using obs_in functions for date window specification
 tdb_filtered = obs_in_days(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb)
 print "Building plot: 4"
 hours_plot_url = plot_trips_per_hour(tdb_filtered)
 
-# creates pie chart for each companies percent of total trips taken
+# creates pie chart for each companies percent of total trips taken in a specified interval
 def plot_trips_per_company(pd_trips_df,firstday,lastday):
     dat = obs_in_days(firstday, lastday, pd_trips_df)
     the_interval = calendar.month_name[firstday.month] +' ' +str(firstday.day)+ ' to '+ calendar.month_name[lastday.month] +' ' +str(lastday.day)
@@ -243,9 +240,7 @@ company_plot_url = plot_trips_per_company(tdb,datetime.datetime(2018, 8, 3, 8, 3
 
 # takes in trips df, plots the number of trips taken in each council district
 # for trips, does not record status change service dropoff at start of day.
-# get each council district boundary'
-
-
+# get each council district's boundary'
 bounds = fiona.open('/Users/hannah1ross/Desktop/mds-dev/data/CouncilDistricts.shp')# fix file path issue
 
 all_bounds = []
@@ -267,7 +262,7 @@ for i in range(14):
     boundary = shapely.geometry.MultiPolygon(polygons) # o
     all_bounds.append(boundary)
 
-
+# creates chart comparing the number of trips taken across each council district for each company
 def plot_trips_per_cd(tdb):
     bat_tdb = tdb.loc[tdb['company_name']=='Bat']
     lemon_tdb = tdb.loc[tdb['company_name']=='Lemon']
@@ -360,8 +355,7 @@ print "Building plot: 7"
 availability_pie_url = plot_availability_piechart(scdb)
 
 
-# create a sankey plot for each company for flows of trips between equity zones
-'''
+# create a sankey plot showing each company's flow of trips between equity zones
 def read_poly(poly, original, dest):
     interior = []
     exterior = []
@@ -414,20 +408,18 @@ for i in range(len(lemon_trips)):
 for i in range(len(bat_trips)):
     bat_trip_ends.append(bat_trips['route'][i]['features'][1]['geometry']['coordinates'])
 
-'''
-# currently only council district 10 so there will be NO TRIPS STARTS OR ENDS IN THE SF VALLEY EQUITY ZONE
-val_to_val = 100
-val_to_nonval = 20
-val_to_city = 32
+val_to_val = 0
+val_to_nonval = 0
+val_to_city = 0
 
-nonval_to_nonval = 23
-nonval_to_val = 20
-nonval_to_city = 80
+nonval_to_nonval = 0
+nonval_to_val = 0
+nonval_to_city = 0
 
-city_to_city = 04
-city_to_val = 120
-city_to_nonval = 50
-'''
+city_to_city = 0
+city_to_val = 0
+city_to_nonval = 0
+
 for i in range(len(lemon_trip_starts[-1000:-1])):
     startpt = shapely.geometry.Point(lemon_trip_starts[i])
     endpt = shapely.geometry.Point(lemon_trip_ends[i])
@@ -439,7 +431,6 @@ for i in range(len(lemon_trip_starts[-1000:-1])):
         else:
             val_to_city = val_to_city + 1
     elif (non_sf_equity.contains(startpt)):
-        # print "made it here", i
         if non_sf_equity.contains(endpt):
             nonval_to_nonval= nonval_to_nonval + 1
         elif sf_equity.contains(endpt):
@@ -456,14 +447,14 @@ for i in range(len(lemon_trip_starts[-1000:-1])):
     else:
         None
 
-# hard code to compensate for only district 10 points
+# hard code to compensate for only district 10 points in  fake data
 val_to_val = 100
 val_to_nonval = 20
 val_to_city = 32
 
 nonval_to_val = 20
 city_to_val = 120
-'''
+
 data = dict(
             type='sankey',
             node = dict(
@@ -483,7 +474,6 @@ data = dict(
                                  nonval_to_nonval, nonval_to_val, nonval_to_city,
                                  city_to_city, city_to_val, city_to_nonval],
                         color = [ "#a6cbe7", "#a6cbe7", "#a6cbe7","#ffc2a3", "#ffc2a3", "#ffc2a3", "#b2d1b2", "#b2d1b2", "#b2d1b2"]
-                        
                         )
             )
     
@@ -576,7 +566,7 @@ lay['mapbox']['center']=dict(
                              lon=-118.33,
                              lat=34.017)
 lay['mapbox']['bearing']=0
-lay['title'] = 'Locations of Scooter Statuses<br>(select legend to inspect an event type)'
+lay['title'] = 'Location of Scooter Statuses<br>(select legend to inspect an event type)'
 
 map_fig = go.Figure(data = traces,layout = lay)
 print "Building plot: 9"
@@ -585,14 +575,17 @@ event_map_url = py.plot(map_fig,auto_open=False)
 # configure the html with all plot urls
 html_string = '''
     <html>
+    <link rel="stylesheet" href="https://unpkg.com/react-select@1.0.0-rc.3/dist/react-select.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/react-virtualized@9.9.0/styles.css">
+    
+    <link rel="stylesheet" href="https://unpkg.com/react-virtualized-select@3.1.0/styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/rc-slider@6.1.2/assets/index.css">
+    
+    <div class="row"><h1 class="eight columns">LADOT Dockless Dashboard - Weekly Overview</h1><img class="one columns" src="https://static1.squarespace.com/static/5952a8abbf629aef69513d41/t/595565dd4f14bc185894d47d/1498768870821/New+LADOT+Logo.png" style="height: 100px; position: relative; float: right; width: 225px;"></div>
+
     <!-- *** Section 1 *** --->
     
-        <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
-        src="''' + pie_plot_url + '''.embed?width=800&height=550"></iframe>
-        
-        <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
-        src="''' + bar_plot_url + '''.embed?width=800&height=550"></iframe>
-        
+    
         <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
         src="''' + double_plot_url + '''.embed?width=800&height=550"></iframe>
         
@@ -623,9 +616,3 @@ f = open('dash_testing.html','w')
 f.write(html_string)
 f.close()
 print('Done.')
-
-
-
-
-
-
