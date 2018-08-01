@@ -1,13 +1,10 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
 """
-Created on Wed Jul 25 14:34:37 2018
+Running this script in command line generates a link to a Dash application with visualizations on local server.
+- currently, username and file paths need to be changed for connect, read_bounds, and read_area
+- mapping capabilities not yet functional
 
-@author: hannah1ross
+Author: Hannah Ross
 """
-## In[]:
-# Import required libraries
-#from cachetools import cached, TTLCache  # 1 - let's import the "cached" decorator and the "TTLCache" object from cachetools
 
 import os
 import pickle
@@ -150,11 +147,8 @@ event_fig = go.Figure(data = traces,layout = lay)
 '''
 
 # make bar chart for trips per cd
-
 print("Generating plot of trips per council district...")
 
-#cache = TTLCache(maxsize=100, ttl=300)  # 2 - let's create the cache object.
-#@cached(cache)  # 3 - it's time to decorate the method to use our cache system!
 def read_bounds(filename):
     bounds = fiona.open('/Users/hannah1ross/Desktop/mds-dev/data/'+filename)# fix file path issue
     return bounds
@@ -421,7 +415,6 @@ layout =  dict(
 
 sankey_fig = go.Figure(data=[data], layout=layout)
 
-# In[]:
 # Create app layout
 app.layout = html.Div(
         [
@@ -482,68 +475,6 @@ app.layout = html.Div(
         ),
   ]
 )
-
-# In[]:
-# Helper functions
-
-
-
-
-# In[]:
-# make plot
-# Selectors -> count graph
-    
-'''
-@app.callback(Output('count_graph', 'figure'),
-              [Input('well_statuses', 'value'),
-               Input('well_types', 'value'),
-               Input('year_slider', 'value')])
-def make_count_figure(well_statuses, well_types, year_slider):
-
-    layout_count = copy.deepcopy(layout)
-
-    dff = filter_dataframe(df, well_statuses, well_types, [1960, 2017])
-    g = dff[['API_WellNo', 'Date_Well_Completed']]
-    g.index = g['Date_Well_Completed']
-    g = g.resample('A').count()
-
-    colors = []
-    for i in range(1960, 2018):
-        if i >= int(year_slider[0]) and i < int(year_slider[1]):
-            colors.append('rgb(192, 255, 245)')
-        else:
-            colors.append('rgba(192, 255, 245, 0.2)')
-
-    data = [
-        dict(
-            type='scatter',
-            mode='markers',
-            x=g.index,
-            y=g['API_WellNo'] / 2,
-            name='All Wells',
-            opacity=0,
-            hoverinfo='skip'
-        ),
-        dict(
-            type='bar',
-            x=g.index,
-            y=g['API_WellNo'],
-            name='All Wells',
-            marker=dict(
-                color=colors
-            ),
-        ),
-    ]
-
-    layout_count['title'] = 'Completed Wells/Year'
-    layout_count['dragmode'] = 'select'
-    layout_count['showlegend'] = False
-
-    figure = dict(data=data, layout=layout_count)
-    return figure
-'''
-
-
 
 '''
 app.layout = html.Div([
