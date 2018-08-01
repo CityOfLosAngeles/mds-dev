@@ -28,6 +28,9 @@ WITH cte AS (
 			FROM
 			row_table AS i LEFT JOIN row_table as j
 			ON i.row_num-1=j.row_num AND
+			   i.company_name = j.company_name AND
+			   i.device_id = j.device_id AND
+			   i.device_type = j.device_type AND
 				((i.event_type='available' AND j.event_type='available') OR
 				(i.event_type<>'available' AND j.event_type<>'available'))
 
@@ -84,8 +87,13 @@ b.reason AS  end_reason,
 a.event_time AS start_time,
 b.event_time AS end_time
 
-
 FROM
-cte AS a INNER JOIN cte AS b
-ON a.n+1 = b.n
-WHERE a.event_type = 'available' and b.event_type <> 'available'
+cte AS a LEFT JOIN cte AS b
+ON a.event_type = 'available' AND b.event_type <> 'available' AND 
+   a.n+1 = b.n AND
+   a.company_name = b.company_name AND
+   a.device_type = b.device_type AND
+   a.device_id = b.device_id
+
+WHERE
+b.event_type IS NOT NULL OR a.event_type = 'available'
