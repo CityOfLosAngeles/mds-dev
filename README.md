@@ -8,9 +8,9 @@ Code to generate fake data for testing.
 
 Code to generate and fill a psql server with data (real or fake).
 
-## equity
+## processing
 
-Code to calculate equity measures and fill a psql table with them.
+Code to process data once obtained. Currently verifies equity measurements.
 
 ## visualize
 
