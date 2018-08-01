@@ -1,10 +1,10 @@
 '''
-This script generates an html file 'dash_testing.html' with visualizations for weekly information from the trips and status_change data.
-
+This script generates an html file 'dash_testing.html' with visualizations for
+the trips and status_change data.
 
 To run in command line, provide postgres username, password, and database name argument
     
-Name and Password fields will need to be changed for 'connect' to read in data from the server.
+* filepaths still need to be changed for reading shapefiles
     
 Author: Hannah Ross
 '''
