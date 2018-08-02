@@ -89,6 +89,7 @@ class intervals:
 
 def measure(db, start, end, area):
     i_s = intervals(start,end)
+    print("Now analyzing {} intervals.".format(len(db)))
     for i,r in db.iterrows():
         if i%500==0:
             print("{} of {}".format(i,len(db)))
@@ -104,6 +105,7 @@ def measure(db, start, end, area):
             # sometimes value is removed but not the key itself with pop
             # bug in library?
             s += i_s.counts[k]*(k.end-k.start)
+    print("done.")
     return s/(end-start)
 
 def test():
