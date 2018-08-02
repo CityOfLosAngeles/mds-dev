@@ -88,11 +88,8 @@ class intervals:
 
 
 def measure(db, start, end, area):
-    print("hello.")
     i_s = intervals(start,end)
     for i,r in db.iterrows():
-        if i==100:
-            break
         if i%500==0:
             print("{} of {}".format(i,len(db)))
         t_s = r['start_time']
