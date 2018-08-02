@@ -73,7 +73,7 @@ WITH cte AS (
 SELECT
 
 a.company_name,
-b.device_type,
+a.device_type,
 a.device_id,
 a.event_type AS start_event_type,
 b.event_type AS end_event_type,
