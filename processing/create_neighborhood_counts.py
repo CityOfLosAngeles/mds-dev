@@ -118,5 +118,5 @@ for i in range(24):
                                                                i),'w') as f:
         json.dump(obj=d,fp=f,indent=4)
     print("done")
-    print("\n\n\n")
+    print("\n")
 
