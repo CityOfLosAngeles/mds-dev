@@ -2,6 +2,10 @@
 Short script to automate creation of geojson file to visualize neighborhood
 level counts of available bikes.
 
+Usage: python create_neighborhood_counts.py user password database
+
+Requires making a directory called neighborhood_counts in the same folder as this file.
+
 Written by: David Klinger
 """
 
@@ -90,7 +94,6 @@ for i in range(24):
     d['type'] = 'FeatureCollection'
     d['features'] = []
     for a in area:
-        print("AREA {} ({} of {})".format(a['properties']['COMTY_NAME'],a['id'],len(area)))
         f = {}
         f['type'] = 'Feature'
         f['geometry'] = {}
@@ -106,7 +109,7 @@ for i in range(24):
         f['properties']['name'] = a['properties']['COMTY_NAME']
         f['properties']['id'] = a['id']
         neighborhood = read_poly(a['geometry']['coordinates'],original,dest)
-        f['properties']['count'] = measure(db,start,end,neighborhood)
+        f['properties']['count'] = measure(db,start,end,neighborhood,False)
         d['features'].append(f)
     print("writing to file")
     with open('neighborhood_counts/{}-{}-{}_{}.geojson'.format(start_time.year,

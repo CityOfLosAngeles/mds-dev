@@ -87,11 +87,12 @@ class intervals:
             self.counts[k] = to_add[k]
 
 
-def measure(db, start, end, area):
+def measure(db, start, end, area,debug=True):
     i_s = intervals(start,end)
-    print("Now analyzing {} intervals.".format(len(db)))
+    if debug:
+        print("Now analyzing {} intervals.".format(len(db)))
     for i,r in db.iterrows():
-        if i%500==0:
+        if i%500==0 and debug:
             print("{} of {}".format(i,len(db)))
         t_s = r['start_time']
         t_e = r['end_time']
@@ -105,8 +106,6 @@ def measure(db, start, end, area):
             # sometimes value is removed but not the key itself with pop
             # bug in library?
             s += i_s.counts[k]*(k.end-k.start)
-    print("done.")
+    if debug:
+        print("done.")
     return s/(end-start)
-
-def test():
-    print("how nice.")
