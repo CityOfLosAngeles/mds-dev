@@ -2,7 +2,7 @@
 This script generates an html file 'dash_testing.html' with visualizations for
 the trips and status_change data.
 
-To run in command line, follow with postgres username, password, and database name as arguments
+To run in command line, provide postgres username, password, and database name argument
     
 * filepaths still need to be changed for reading shapefiles
     
@@ -163,7 +163,7 @@ def plot_trips_per_weekdays_for_interval(firstday,lastday,tdb ):
 
 double_bar_fig = plot_trips_per_weekdays_for_interval(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb )
 
-print "Building plot: 3"
+print "Building plot: 1"
 double_plot_url = py.plot(double_bar_fig, filename='trips_per_weekdayDoubleBar', auto_open=False,)
 
 # helper function used for plotting trips per hour
@@ -204,7 +204,7 @@ def plot_trips_per_hour(tdb):
 
 # can filter trips database using obs_in functions for date window specification
 tdb_filtered = obs_in_days(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb)
-print "Building plot: 4"
+print "Building plot: 2"
 hours_plot_url = plot_trips_per_hour(tdb_filtered)
 
 # creates pie chart for each companies percent of total trips taken in a specified interval
@@ -235,7 +235,7 @@ def plot_trips_per_company(pd_trips_df,firstday,lastday):
     fig['data'][0]['values'].append(lemon_users)
     return py.plot(fig, filename='TripsPerCompany',auto_open=False)
 
-print "Building plot: 5"
+print "Building plot: 3"
 company_plot_url = plot_trips_per_company(tdb,datetime.datetime(2018, 8, 3, 8, 32, 13),datetime.datetime(2018, 8, 10, 8, 33, 13))
 
 # takes in trips df, plots the number of trips taken in each council district
@@ -312,47 +312,86 @@ def plot_trips_per_cd(tdb):
     trips_per_cd_fig = go.Figure(data=data, layout=layout)
     return py.plot(trips_per_cd_fig,auto_open = False)
 
-print "Building plot: 6 "
+print "Building plot: 4"
 trips_per_cd_url = plot_trips_per_cd(tdb)
 
 
 # show chart of the most common reasons for device availability
 def plot_availability_piechart(scdb):
     avail_rows = scdb.loc[scdb['event_type']=='available']
-    service_start = sum(avail_rows['reason']=='service_start')
-    maintenance = sum(avail_rows['reason']== 'maintenance')
+    #service_start = sum(avail_rows['reason']=='service_start')
+    #maintenance = sum(avail_rows['reason']== 'maintenance')
     maintenance_drop_off = sum(avail_rows['reason']== 'maintenance_drop_off')
     user_drop_off = sum(avail_rows['reason']== 'user_drop_off')
-    user_pick_up = sum(avail_rows['reason']== 'user_pick_up')
-    low_battery = sum(avail_rows['reason']== 'low_battery')
+    #user_pick_up = sum(avail_rows['reason']== 'user_pick_up')
+    #low_battery = sum(avail_rows['reason']== 'low_battery')
     service_end = sum(avail_rows['reason']== 'service_end')
-    rebalance_pick_up = sum(avail_rows['reason']== 'rebalance_pick_up')
-    maintenance_pick_up = sum(avail_rows['reason']== 'maintenance_pick_up')
-    out_of_service_area_pick_up = sum(avail_rows['reason']== 'out_of_service_area_pick_up')
+    #rebalance_pick_up = sum(avail_rows['reason']== 'rebalance_pick_up')
+    #maintenance_pick_up = sum(avail_rows['reason']== 'maintenance_pick_up')
+    #out_of_service_area_pick_up = sum(avail_rows['reason']== 'out_of_service_area_pick_up')
     out_of_service_area_drop_off = sum(avail_rows['reason']== 'out_of_service_area_drop_off')
 
     fig = {
     "data": [
              {
              "values": [],
-             "labels": ["service_start","maintenance","maintenance_drop_off","user_drop_off","user_pick_up","low_battery","service_end","rebalance_pick_up","maintenance_pick_up","out_of_service_area_pick_up","out_of_service_area_drop_off"],
+             "labels": ["maintenance_drop_off","user_drop_off","service_end","out_of_service_area_drop_off"],
              "name": "Availability Breakdown",
              "hoverinfo":"label+name+value",
              "type": "pie"
              },
              ],
         "layout": {
-        "title":"Categories of Availability"
+        "title":"Reasons for Availability"
         }
     }
 
-    lis = [service_start,maintenance,maintenance_drop_off,user_drop_off,user_pick_up,low_battery,service_end,rebalance_pick_up,maintenance_pick_up,out_of_service_area_pick_up,out_of_service_area_drop_off ]
+    lis = [maintenance_drop_off,user_drop_off,service_end,out_of_service_area_drop_off ]
     for val in lis:
         fig['data'][0]['values'].append(val)
     return py.plot(fig, filename='AvailabilityPie', auto_open=False,)
 
-print "Building plot: 7"
+print "Building plot: 5"
 availability_pie_url = plot_availability_piechart(scdb)
+
+# plot chart of reasons for unavailability
+def plot_unavailability_piechart(scdb):
+    unavail_rows = scdb.loc[scdb['event_type']!='available']
+    service_start = sum(unavail_rows['reason']=='service_start')
+    maintenance = sum(unavail_rows['reason']== 'maintenance')
+    #maintenance_drop_off = sum(avail_rows['reason']== 'maintenance_drop_off')
+    #user_drop_off = sum(avail_rows['reason']== 'user_drop_off')
+    user_pick_up = sum(unavail_rows['reason']== 'user_pick_up')
+    low_battery = sum(unavail_rows['reason']== 'low_battery')
+    #service_end = sum(avail_rows['reason']== 'service_end')
+    rebalance_pick_up = sum(unavail_rows['reason']== 'rebalance_pick_up')
+    maintenance_pick_up = sum(unavail_rows['reason']== 'maintenance_pick_up')
+    out_of_service_area_pick_up = sum(unavail_rows['reason']== 'out_of_service_area_pick_up')
+    #out_of_service_area_drop_off = sum(avail_rows['reason']== 'out_of_service_area_drop_off')
+    
+    fig = {
+    "data": [
+             {
+             "values": [],
+             "labels": ["service_start","maintenance","maintenance_drop_off","user_drop_off","user_pick_up","low_battery","service_end","rebalance_pick_up","maintenance_pick_up","out_of_service_area_pick_up","out_of_service_area_drop_off"],
+             "name": "Unavailability Breakdown",
+             "hoverinfo":"label+name+value",
+             "type": "pie"
+             },
+             ],
+        "layout": {
+        "title":"Reasons for Unavailability"
+    }
+    }
+    
+    lis = [service_start,maintenance,user_pick_up,low_battery,rebalance_pick_up,maintenance_pick_up,out_of_service_area_pick_up ]
+    for val in lis:
+        fig['data'][0]['values'].append(val)
+    return py.plot(fig, filename='UnavailabilityPie', auto_open=False,)
+
+print "Building plot: 6"
+unavailability_pie_url = plot_unavailability_piechart(scdb)
+
 
 
 # create a sankey plot showing each company's flow of trips between equity zones
@@ -520,7 +559,7 @@ layout =  dict(
 
 
 fig = dict(data=[data], layout=layout)
-print "Building plot: 8 "
+print "Building plot: 7"
 lemon_sankey_plot_url = py.plot(fig, validate=False,auto_open=False)
 
 
@@ -569,7 +608,7 @@ lay['mapbox']['bearing']=0
 lay['title'] = 'Location of Scooter Statuses<br>(select legend to inspect an event type)'
 
 map_fig = go.Figure(data = traces,layout = lay)
-print "Building plot: 9"
+print "Building plot: 8"
 event_map_url = py.plot(map_fig,auto_open=False)
 
 # configure the html with all plot urls
@@ -602,6 +641,9 @@ html_string = '''
       
         <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="yes" \
                 src="''' + availability_pie_url + '''.embed?width=900&height=550"></iframe>
+                    
+                    <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="yes" \
+                    src="''' + unavailability_pie_url + '''.embed?width=900&height=550"></iframe>
         
         <iframe width="1000" height="550" frameborder="0" seamless="seamless" scrolling="no" \
         src="''' + lemon_sankey_plot_url + '''.embed?width=900&height=550"></iframe>
@@ -616,3 +658,9 @@ f = open('dash_testing.html','w')
 f.write(html_string)
 f.close()
 print('Done.')
+
+
+
+
+
+
