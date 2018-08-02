@@ -56,9 +56,6 @@ def chequity(con, start, end, area, company, device):
                          company, device)
     db = pandas.read_sql(command,con,index_col=None)
     print("Query done.")
-    print("Really, it is.")
-    print(db)
-    print("Done printing!")
     n = measure.measure(db,start,end,area)
     return n
 
