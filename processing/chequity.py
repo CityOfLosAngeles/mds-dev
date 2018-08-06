@@ -42,30 +42,8 @@ def connect(user, password, db, host, port):
     con = sqlalchemy.create_engine(url)
     return con
 
+"""
 def chequity(con, start, end, area, company, device):
-    print("Querying.")
-    command = """
-              SELECT * FROM "availability" 
-              WHERE ((start_time <= {} AND end_time > {}) OR
-                     (start_time < {} AND end_time >= {}) OR
-                     (start_time >= {} AND end_time <= {}) OR
-                     (start_time < {} AND end_time IS NULL)) AND
-                     company_name = '{}' AND
-                     device_type = '{}'
-              ORDER BY start_time, end_time
-              """.format(start, start, 
-                         end, end, 
-                         start, end,
-                         end,
-                         company, 
-                         device)
-    db = pandas.read_sql(command,con,index_col=None)
-    print("Query done.")
-    n = measure.measure(db,start,end,area)
-    return n
-
-
-    """
     # Old code, left in for posterity
     # also in case the new code is horribly wrong
     intervals = set()
@@ -87,7 +65,7 @@ def chequity(con, start, end, area, company, device):
                 new_interval.update(to_add)
             interval = new_interval
     print(interval)
-    """
+ """
 
 def read_poly(poly, original, dest):
     interior = []
@@ -144,9 +122,24 @@ for i in range(0,31):
     print("Day {}".format(i))
     for c in company:
         print("Company {}".format(c))
+        command = """
+                  SELECT * FROM "availability" 
+                  WHERE ((start_time <= {} AND end_time > {}) OR
+                         (start_time < {} AND end_time >= {}) OR
+                         (start_time >= {} AND end_time <= {}) OR
+                         (start_time < {} AND end_time IS NULL)) AND
+                         company_name = '{}' AND
+                         device_type = 'scooter'
+                  ORDER BY start_time, end_time
+                  """.format(start, start,
+                             end, end, 
+                             start, end,
+                             end,
+                             c)
+        db = pandas.read_sql(command,con,index_col=None)
         for n,a in areas:
             print("Area {}".format(n))
-            avg= chequity(con,start,end,a,c,"scooter")
+            avg = measure.measure(db,start,end,a)
             con.execute("INSERT INTO equity VALUES ('{}', 'scooter','{}',{},{},{})".
                     format(c,n,start,end,avg))
     
