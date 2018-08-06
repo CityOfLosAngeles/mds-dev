@@ -46,14 +46,19 @@ def chequity(con, start, end, area, company, device):
     print("Querying.")
     command = """
               SELECT * FROM "availability" 
-              WHERE ((start_time < {} AND end_time > {}) OR
-                     (start_time < {} AND end_time > {}) OR
-                     (start_time > {} AND end_time < {})) AND
+              WHERE ((start_time <= {} AND end_time > {}) OR
+                     (start_time < {} AND end_time >= {}) OR
+                     (start_time >= {} AND end_time <= {}) OR
+                     (start_time < {} AND end_time IS NULL)) AND
                      company_name = '{}' AND
                      device_type = '{}'
               ORDER BY start_time, end_time
-              """.format(start, start, end, end, start, end, 
-                         company, device)
+              """.format(start, start, 
+                         end, end, 
+                         start, end,
+                         end,
+                         company, 
+                         device)
     db = pandas.read_sql(command,con,index_col=None)
     print("Query done.")
     n = measure.measure(db,start,end,area)

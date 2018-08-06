@@ -59,26 +59,34 @@ class intervals:
             i = 0
         to_remove = sortedcontainers.SortedSet()
         to_add = sortedcontainers.SortedDict()
-        while i < len(self.counts) and self.counts.keys()[i].start < t_e:
+        while i < len(self.counts) and (self.counts.keys()[i].start < t_e or t_e is None):
             key = self.counts.keys()[i]
             s = key.start
             e = key.end
             cnt = self.counts[key]
-            if t_s <= s and t_e >= e:
-                to_add[interval(s,e)] = cnt+1
-            elif t_s <= s and t_e > s and t_e < e:
-                to_remove.add(key)
-                to_add[interval(s,t_e)] = cnt+1
-                to_add[interval(t_e,e)] = cnt
-            elif t_s > s and t_s < e and t_e >= e:
-                to_remove.add(key)
-                to_add[interval(s,t_s)] = cnt
-                to_add[interval(t_s,e)] = cnt+1
-            elif t_s > s and t_e < e:
-                to_remove.add(key)
-                to_add[interval(s,t_s)] = cnt
-                to_add[interval(t_s,t_e)] = cnt+1
-                to_add[interval(t_e,e)] = cnt
+            if t_e is not None:
+                if t_s <= s and t_e >= e:
+                    to_add[interval(s,e)] = cnt+1
+                elif t_s <= s and t_e > s and t_e < e:
+                    to_remove.add(key)
+                    to_add[interval(s,t_e)] = cnt+1
+                    to_add[interval(t_e,e)] = cnt
+                elif t_s > s and t_s < e and t_e >= e:
+                    to_remove.add(key)
+                    to_add[interval(s,t_s)] = cnt
+                    to_add[interval(t_s,e)] = cnt+1
+                elif t_s > s and t_e < e:
+                    to_remove.add(key)
+                    to_add[interval(s,t_s)] = cnt
+                    to_add[interval(t_s,t_e)] = cnt+1
+                    to_add[interval(t_e,e)] = cnt
+            else:
+                if t_s <= s:
+                    to_add[interval(s,e)] = cnt+1
+                elif t_s > s:
+                    to_remove.add(key)
+                    to_add[interval(s,t_s)] = cnt
+                    to_add[interval(t_s,e)] = cnt+1
             i += 1
 
         for r in to_remove:
