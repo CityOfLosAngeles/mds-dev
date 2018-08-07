@@ -79,7 +79,7 @@ def get_equal_area(neighborhood):
                                    pyproj.Proj("+proj=laea +lat_0=5 +lon_0=19 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs "))
     return shapely.ops.transform(projection, neighborhood)
 
-area = fiona.open("la_neighborhoods.shp")
+area = fiona.open("../data/shapefiles/la_neighborhoods.shp")
 original = pyproj.Proj(area.crs, preserve_units=True)
 dest = pyproj.Proj(init='epsg:4326')
 
