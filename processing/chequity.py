@@ -108,9 +108,9 @@ if args.port is not None:
     port = args.port
 con = connect(user,password,db,host,port)
 
-city_boundary = read_area('City_Boundary.shp')
-sf_equity = read_area('San_Fernando_Valley.shp')
-non_sf_equity = read_area('Non_San_Fernando.shp')
+city_boundary = read_area('../data/shapefiles/City_Boundary.shp')
+sf_equity = read_area('../data/shapefiles/San_Fernando_Valley.shp')
+non_sf_equity = read_area('../data/shapefiles/Non_San_Fernando.shp')
 
 
 for i in range(0,31):
