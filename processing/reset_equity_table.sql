@@ -1,2 +1,2 @@
-DROP TYPE area;
-DROP TABLE equity;
+DROP IF EXISTS TYPE area;
+DROP TABLE IF EXISTS equity;

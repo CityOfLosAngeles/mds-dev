@@ -18,8 +18,12 @@ import pyproj
 import sqlalchemy
 import datetime
 import time
+import shapely.ops
 import shapely.geometry
 import pandas
+import functools
+from mapboxgl.viz import *
+from mapboxgl.utils import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument("user", type=str,
@@ -68,32 +72,36 @@ def read_poly(poly, original, dest):
     final_area = shapely.geometry.Polygon(exterior, interior)
     return final_area
 
-area = fiona.open("la_neighborhoods.shp")
+
+def get_equal_area(neighborhood):
+    projection = functools.partial(pyproj.transform, 
+                                   pyproj.Proj(init='epsg:4326'),
+                                   pyproj.Proj("+proj=laea +lat_0=5 +lon_0=19 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs "))
+    return shapely.ops.transform(projection, neighborhood)
+
+area = fiona.open("../data/shapefiles/la_neighborhoods.shp")
 original = pyproj.Proj(area.crs, preserve_units=True)
 dest = pyproj.Proj(init='epsg:4326')
-for i in range(24):
-    start_time = datetime.datetime(2018,8,15,i,0,0)
-    print("HOUR {}".format(i))
-    start = time.mktime(start_time.timetuple())
-    if i==23:
-        end = time.mktime(datetime.datetime(2018,8,16,0,0,0).timetuple())
-    else:
-        end = time.mktime(datetime.datetime(2018,8,15,i+1,0,0).timetuple())
-    print("Querying.")
-    command = """
-              SELECT * FROM "availability" 
-              WHERE ((start_time < {} AND end_time > {}) OR
-                     (start_time < {} AND end_time > {}) OR
-                     (start_time > {} AND end_time < {})) AND
-                     device_type = 'scooter'
-              ORDER BY start_time, end_time
-              """.format(start, start, end, end, start, end)
-    db = pandas.read_sql(command,con,index_col=None)
-    print("Query done.")
-    d = {}
-    d['type'] = 'FeatureCollection'
-    d['features'] = []
-    for a in area:
+
+start_time = datetime.datetime(2018,8,15,0,0,0)
+start = time.mktime(start_time.timetuple())
+end = time.mktime(datetime.datetime(2018,8,16,0,0,0).timetuple())
+print("Querying.")
+command = """
+          SELECT * FROM "availability" 
+          WHERE ((start_time < {} AND end_time > {}) OR
+                 (start_time < {} AND end_time > {}) OR
+                 (start_time > {} AND end_time < {})) AND
+                 device_type = 'scooter'
+          ORDER BY start_time, end_time
+          """.format(start, start, end, end, start, end)
+db = pandas.read_sql(command,con,index_col=None)
+print("Query done.")
+d = {}
+d['type'] = 'FeatureCollection'
+d['features'] = []
+for a in area:
+    if a['properties']['COMTY_NAME'] != "":
         f = {}
         f['type'] = 'Feature'
         f['geometry'] = {}
@@ -107,16 +115,20 @@ for i in range(24):
             f['geometry']['coordinates'].append(li)
         f['properties'] = {}
         f['properties']['name'] = a['properties']['COMTY_NAME']
+        print("{}: {} of {}".format(f['properties']['name'],
+                                    a['id'],
+                                    len(area)))
         f['properties']['id'] = a['id']
         neighborhood = read_poly(a['geometry']['coordinates'],original,dest)
-        f['properties']['count'] = measure(db,start,end,neighborhood,False)
+        # NOTE: THESE COUNTS ARE NORMALIZED BY AREA (sq. mi.)
+        equal_area = get_equal_area(neighborhood)
+        count = measure(db,start,end,neighborhood,False)/(equal_area.area/1609.344)
+        f['properties']['count'] = count
         d['features'].append(f)
-    print("writing to file")
-    with open('neighborhood_counts/{}-{}-{}_{}.geojson'.format(start_time.year,
-                                                               start_time.month,
-                                                               start_time.day,
-                                                               i),'w') as f:
-        json.dump(obj=d,fp=f,indent=4)
-    print("done")
-    print("\n")
+print("writing to file")
+with open('neighborhood_counts/neighborhood.geojson','w') as f:
+    json.dump(obj=d,fp=f,indent=4)
+print("done")
+print("\n")
+
 

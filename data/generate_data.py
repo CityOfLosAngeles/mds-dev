@@ -26,7 +26,7 @@ import os
 
 # generate district 10 boundary using gps coordinates
 # also used to make json for service areas
-bounds = fiona.open('CouncilDistricts.shp')
+bounds = fiona.open('shapefiles/CouncilDistricts.shp')
 original = pyproj.Proj(bounds.crs)
 dest = pyproj.Proj(init='epsg:4326')
 polygons = []

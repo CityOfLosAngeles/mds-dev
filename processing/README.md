@@ -35,3 +35,5 @@ Usage: python create_neighborhood_counts.py user password database
 
 Requires making a directory called neighborhood_counts in the same folder as this file.
 
+Then you can use run `jupyter nbconvert --execute neighborhood_counts/create_html.ipynb` to create an html in this folder that will display the map.
+
