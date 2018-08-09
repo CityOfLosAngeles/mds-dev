@@ -85,9 +85,10 @@ con = connect(user,password,db)
 tdb, scdb = get_data(con)
 
 ########################################################## create map of event_types
-
+'''
 print ("Generating event status map...")
-    
+#OLD
+
 layout = dict(
     autosize=True,
     height=500,
@@ -105,7 +106,7 @@ layout = dict(
     legend=dict(font=dict(size=10), orientation='h'),
     title='Satellite Overview',
     mapbox=dict(
-    #accesstoken=mapbox_access_token,
+    accesstoken='pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA',
     style="dark",
     center=dict(
     lon=-78.05,
@@ -160,6 +161,54 @@ lay['mapbox']['center']=dict(
 event_fig = go.Figure(data = traces,layout = lay)
 
 
+# create map of event_types
+scdb_small = scdb.head(100)
+start_points =[literal_eval(scdb_small['location'][i]) for i in scdb_small['location'].index]
+events = [scdb_small['event_type'][i] for i in range(len(scdb_small))]
+
+# create dataframes for startpoints and endpoints with lat and long coords
+start_d = {'lat':[], 'lon':[],'event_type':[]}
+
+for start_p in start_points:
+    start_lon,start_lat = start_p[0],start_p[1]
+    start_d['lat'].append(start_lat)
+    start_d['lon'].append(start_lon)
+
+for event_type in events:
+    start_d['event_type'].append(event_type)
+
+startdb = pandas.DataFrame.from_dict(start_d)
+WELL_COLORS = dict(available= 'rgb(139,195,74)', unavailable = 'yellow', reserved= 'rgb(2,136,209)', removed='rgb(211,47,47)' )
+traces = []
+for ev_type, dff in startdb.groupby('event_type'):
+    trace = dict(
+                 type='scattermapbox',
+                 lon=dff['lon'],
+                 lat=dff['lat'],
+                 name= ev_type,
+                 text = ev_type,
+                 marker=dict(
+                             size=11,
+                             opacity=1,
+                             color=WELL_COLORS[ev_type]
+                             ),
+                 )
+    traces.append(trace)
+
+lay = go.Layout()
+lay['hovermode']='closest'
+lay['autosize'] = True
+lay['mapbox']['zoom'] = 11
+lay['mapbox']['center']=dict(
+                             lon=-118.33,
+                             lat=34.017)
+lay['mapbox']['bearing']=0
+lay['title'] = 'Locations of Scooter Statuses'
+
+map_fig = go.Figure(data = traces,layout = lay)
+
+
+'''
 ############################################### create bar chart for trips per council district
 print("Generating plot of trips per council district...")
 
@@ -360,11 +409,11 @@ for i in range(len(lemon_trip_starts)):
         None
 
 # hard coded numbers to compensate for only district 10 points in fake data
-val_to_val = 10000
-val_to_nonval = 2000
-val_to_city = 3200
-nonval_to_val = 2000
-city_to_val = 12000
+val_to_val = 100000
+val_to_nonval = 20000
+val_to_city = 32000
+nonval_to_val = 20000
+city_to_val = 120000
 
 data = dict(
             type='sankey',
@@ -565,7 +614,7 @@ trace1 = go.Scatter(
 )
 
 data = [trace,trace0,trace1]
-layout = dict(title = 'Availabilities Periods Per Device',
+layout = dict(title = 'Availabilities Per Device',
               xaxis = dict(title = 'Hour of Day'),
               yaxis = dict(title = 'Availabilities per Device'),
               )
@@ -630,7 +679,7 @@ app.layout = html.Div(
                                 html.Div(
                                           [
                                            dcc.Graph(id='map_of_events_fig',
-                                                     figure = event_fig,
+                                                     #figure = map_fig,
                                                      style={'margin-top': '20'})
                                            ],
                                           ),
@@ -652,6 +701,6 @@ app.layout = html.Div(
 # In[]:
 # Main
 if __name__ == '__main__':
-    app.server.run(debug=False)
+    app.server.run(debug=True)
 
 
