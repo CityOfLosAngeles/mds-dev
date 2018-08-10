@@ -26,6 +26,8 @@ import plotly.graph_objs as go
 import sqlalchemy
 import os
 import pandas
+import shapely.geometry
+import pyproj
 import psycopg2
 import json
 import requests
@@ -83,6 +85,31 @@ db = args.database
 
 con = connect(user,password,db)
 tdb, scdb = get_data(con)
+
+################################################# read in council district boundaries
+print("Loading in council district shapefiles...")
+bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/CouncilDistricts.shp')# fix file path issue
+
+all_bounds = []
+        
+all_bounds = []
+for i in range(14):
+    original = pyproj.Proj(bounds.crs)
+    dest = pyproj.Proj(init='epsg:4326')
+    polygons = []
+    polygons_list = []
+    for poly in bounds[i]['geometry']['coordinates']: # get district 10
+        polygon = [] # eventual converted polygon
+        polygon_lists = []
+        for x,y in poly:
+            x_prime,y_prime = pyproj.transform(original,dest,x,y) # transform point
+            p = (x_prime,y_prime)
+            polygon.append(p)
+            polygon_lists.append([x_prime,y_prime])
+    polygons.append(shapely.geometry.Polygon(polygon))
+    polygons_list.append(polygon_lists)
+    boundary = shapely.geometry.MultiPolygon(polygons) # o
+    all_bounds.append(boundary)
 
 ########################################################## create map of event_types
 '''
@@ -207,14 +234,14 @@ lay['title'] = 'Locations of Scooter Statuses'
 
 map_fig = go.Figure(data = traces,layout = lay)
 
-
 '''
+
 ############################################### create bar chart for trips per council district
 print("Generating plot of trips per council district...")
 
 # function to read in council district boundaries
 def read_bounds(filename):
-    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/'+filename)# fix file path issue
+    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/'+filename)# fix file path issue
     return bounds
 bounds= read_bounds('CouncilDistricts.shp')
 
@@ -315,6 +342,9 @@ company_trip_pie_fig['data'][0]['values'].append(bat_users)
 company_trip_pie_fig['data'][0]['values'].append(lemon_users)
     
 
+
+
+
 ############################################# create sankey figure for equity zone flows
 # *currently only council district 10 so there will be no trip starts or ends in the sf valley equity zone
 print("NOW Generating equity zone sankey plot...")
@@ -350,9 +380,9 @@ def read_area(file_name):
         return shapely.ops.cascaded_union(multi_polygon)
     
     
-city_boundary = read_area('/Users/newmobility/Desktop/mds-dev/data/City_Boundary.shp')
-sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/San_Fernando_Valley.shp')
-non_sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/Non_San_Fernando.shp')
+city_boundary = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/City_Boundary.shp')
+sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/San_Fernando_Valley.shp')
+non_sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/Non_San_Fernando.shp')
 
 lemon_trips = tdb.loc[tdb['company_name']=='Lemon'].reset_index()
 bat_trips = tdb.loc[tdb['company_name']=='Bat'].reset_index()
@@ -642,65 +672,137 @@ app.layout = html.Div(
                                  ],
                                 className='row'
                                 ),
-                       
                        dcc.Graph(
-                                 id='hours_fig',
-                                 figure = hours_plot_fig,
+                                 id='trips_per_cd_fig',
+                                 figure = trips_per_cd_fig,
                                  style={'margin-top': '20'}
                                  ),
+                        dcc.Graph(
+                                id='sankey_fig',
+                                 figure = sankey_fig,
+                                style={'margin-top': '20'}
+                                ),
                        html.Div(
                                 [
+                                html.Div([
+                                            html.Label('Select Council District'),
+                                            dcc.Dropdown(id = 'cd',
+                                             
+                                    options=[
+                                    {'label': '1', 'value': 1},
+                                    {'label': '2', 'value': 2},
+                                    {'label': '3', 'value': 3},
+                                    {'label': '4', 'value': 4},
+                                    {'label': '5', 'value': 5},
+                                    {'label': '6', 'value': 6},
+                                    {'label': '7', 'value': 7},
+                                    {'label': '8', 'value': 8},
+                                    {'label': '9', 'value': 9},
+                                    {'label': '10', 'value': 10},
+                                    {'label': '11', 'value': 11},
+                                    {'label': '12', 'value': 12},
+                                    {'label': '13', 'value': 13},
+                                    {'label': '14', 'value': 14},
+                                    {'label': '15', 'value': 15},
+                                    ],
+                                    value=None,
+                                    )
+                                 ]
+                                 ),
                                  html.Div(
                                           [
-                                           dcc.Graph(id='trips_per_cd_fig',
-                                                     figure = trips_per_cd_fig
+                                           dcc.Graph(id='company_trips_fig',
+                                                     figure = company_trip_pie_fig,
+                                                     style={'margin-top': '20'})
+                                           ],
+                                          ),
+                                 html.Div(
+                                          [
+                                           dcc.Graph(id='hours_fig',
+                                                     figure =  hours_plot_fig,
                                                      )
                                            ],
                                           #className='four columns',
                                           style={'margin-top': '20'}
                                           ),
-                                 html.Div(
-                                          [
-                                           dcc.Graph(id='sankey_fig',
-                                                     figure = sankey_fig,
-                                                     style={'margin-top': '20'})
-                                           ],
-                                          #className='four columns',
-                                          #style={'margin-top': '20'}
-                                          ),
                                 html.Div(
                                           [
                                            dcc.Graph(id='avail_per_dev_fig',
-                                                     figure = avail_per_dev_fig,
+                                                    figure = avail_per_dev_fig,
                                                      style={'margin-top': '20'})
                                            ],
                                           ),
-                                    
                                 html.Div(
                                           [
                                            dcc.Graph(id='map_of_events_fig',
                                                      #figure = map_fig,
                                                      style={'margin-top': '20'})
                                            ],
-                                          ),
-                                 html.Div(
-                                          [
-                                           dcc.Graph(id='company_trips_fig',
-                                                     figure = company_trip_pie_fig,
-                                                     className='four columns',
-                                                     style={'margin-top': '5'}
-                                                     ),            
-                                           ],
-                                          ),
-                                 ],
-                                className='row'
-                                ),
+                                          ),                                
                        ]
-                      )
+                      
+                       )
+                      ]
+)
+
+
+
+# helper functions
+def trips_in_cd(tripdb,cd_num):
+    print(type(cd_num))
+    area = all_bounds[ cd_num+1 ] 
+    points=[]
+    for i in range(len(tripdb)): 
+        pt = tdb['route'][i]['features'][0]['geometry']['coordinates'][0],tdb['route'][0]['features'][0]['geometry']['coordinates'][1]
+        points.append( pt)
+    bool_vec = [area.contains(shapely.geometry.Point(p)) for p in points]   
+    return tripdb.loc[bool_vec]
+
+
+
+@app.callback(Output('company_trips_fig', 'figure'),
+              [Input('cd', 'value')],
+               )
+def make_main_figure(selected_cd):
+    #if cd=='1':
+     #   d = trips_in_cd(tdb,1)
+    #else:
+    #    d=tdb
+    print(selected_cd)
+    if selected_cd is None:
+        d = tdb
+        new_label = "City Wide"
+    else:
+        d= trips_in_cd(tdb,selected_cd)
+        new_label = "in Council District " + str(selected_cd)
+    bat_users = sum(d['company_name']=='Bat')
+    lemon_users = sum(d['company_name']=='Lemon')
+    
+    company_trip_pie_fig = {
+    "data": [
+    {
+    "values": [],
+    "labels": [
+    "Bat",
+    "Lemon"
+    ],
+    "hoverinfo":"label+value",
+    "type": "pie"
+    },
+    ],
+    "layout": {
+    "title":"Trips Per Company {}".format(new_label),
+    }
+    }
+    company_trip_pie_fig['data'][0]['values'].append(bat_users)
+    company_trip_pie_fig['data'][0]['values'].append(lemon_users)
+    return company_trip_pie_fig
+
+
 
 # In[]:
 # Main
 if __name__ == '__main__':
-    app.server.run(debug=True)
+    app.server.run(debug=False)
 
 
