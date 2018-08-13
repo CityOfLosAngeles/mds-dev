@@ -2,6 +2,8 @@
     Running this script generates a locally hosted Dash application with figures contructed from the transit SQL database.
     - currently, username and file paths need to be changed for connect, read_bounds, and read_area
     - mapping capabilities not yet functional
+    - this script requires neccessary views: availability,
+    - currently end points are computer as the second point in route.
     
     to use:    python dash_app.py [username] [password] [database name]
 
@@ -42,7 +44,7 @@ from shapely.geometry import shape,mapping, Point, Polygon, MultiPolygon
 import shapely.ops
 import dash_html_components as html
 import fiona # MUST KEEP FIONA IMPORT AFTER SHAPELY IMPORTS
-
+import controls # controls allows for modularity with company names, plotly account settings, 
 app = dash.Dash(__name__)
 app.css.append_css({'external_url': 'https://cdn.rawgit.com/plotly/dash-app-stylesheets/2d266c578d2a6e8850ebce48fdb52759b2aef506/stylesheet-oil-and-gas.css'})  # noqa: E501
 server = app.server
@@ -68,7 +70,7 @@ def get_data(con):
     return (trips_db,status_change_db)
 
 
-print ("Loading in data...")
+print ("Loading in server data...")
 # extract arguments to connect to server
 parser = argparse.ArgumentParser()
 parser.add_argument("user", type=str,
@@ -86,19 +88,26 @@ db = args.database
 con = connect(user,password,db)
 tdb, scdb = get_data(con)
 
+################################################ extract company names and the number of companies
+companies = tdb['company_name'].unique()
+
 ################################################# read in council district boundaries
 print("Loading in council district shapefiles...")
-bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/CouncilDistricts.shp')# fix file path issue
 
-all_bounds = []
-        
-all_bounds = []
-for i in range(14):
+# function to read in council district boundaries
+def read_bounds(filename):
+    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/'+filename)# fix file path issue
+    return bounds
+
+bounds= read_bounds('CouncilDistricts.shp')
+
+all_bounds = [] # boundaries of all 15 council districts
+for i in range(len(bounds)):
     original = pyproj.Proj(bounds.crs)
     dest = pyproj.Proj(init='epsg:4326')
     polygons = []
     polygons_list = []
-    for poly in bounds[i]['geometry']['coordinates']: # get district 10
+    for poly in bounds[i]['geometry']['coordinates']: 
         polygon = [] # eventual converted polygon
         polygon_lists = []
         for x,y in poly:
@@ -108,11 +117,33 @@ for i in range(14):
             polygon_lists.append([x_prime,y_prime])
     polygons.append(shapely.geometry.Polygon(polygon))
     polygons_list.append(polygon_lists)
-    boundary = shapely.geometry.MultiPolygon(polygons) # o
+    boundary = shapely.geometry.MultiPolygon(polygons) 
     all_bounds.append(boundary)
+
+# fix how the order of bounds in shapefiles is random with respect to council districts
+myorder=[10, 4, 3, 6, 5, 2, 0, 13, 12, 11, 9, 1, 7, 8, 14]
+all_bounds = [ all_bounds[i] for i in myorder]
+
+
+################################################  preproccess trips for each council district
+def trips_in_cd(tripdb,cd_num):
+    boundary = all_bounds[ cd_num-1 ] 
+    co_start_points = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
+    co_pts = [shapely.geometry.Point(co_pt) for co_pt in co_start_points]
+    bool_vec = [boundary.contains(p) for p in co_pts]   
+    return tripdb.loc[bool_vec]
+
+# extract each cd's trips for querying
+cd_trips = []
+for i in range(1,16,1):
+    cd_trips.append(trips_in_cd(tdb,i))
+
+
 
 ########################################################## create map of event_types
 '''
+
+
 print ("Generating event status map...")
 #OLD
 
@@ -234,120 +265,87 @@ lay['title'] = 'Locations of Scooter Statuses'
 
 map_fig = go.Figure(data = traces,layout = lay)
 
-'''
 
+'''
 ############################################### create bar chart for trips per council district
 print("Generating plot of trips per council district...")
 
-# function to read in council district boundaries
-def read_bounds(filename):
-    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/'+filename)# fix file path issue
-    return bounds
-bounds= read_bounds('CouncilDistricts.shp')
-
-all_bounds = []
-for i in range(14):
-    original = pyproj.Proj(bounds.crs)
-    dest = pyproj.Proj(init='epsg:4326')
-    polygons = []
-    polygons_list = []
-    for poly in bounds[i]['geometry']['coordinates']: # get district 10
-        polygon = [] # eventual converted polygon
-        polygon_lists = []
-        for x,y in poly:
-            x_prime,y_prime = pyproj.transform(original,dest,x,y) # transform point
-            p = (x_prime,y_prime)
-            polygon.append(p)
-            polygon_lists.append([x_prime,y_prime])
-    polygons.append(shapely.geometry.Polygon(polygon))
-    polygons_list.append(polygon_lists)
-    boundary = shapely.geometry.MultiPolygon(polygons) 
-    all_bounds.append(boundary)
-
 # creates double-bar chart for the number of trips taken in each council district per company
 def plot_trips_per_cd(tdb):
-    bat_tdb = tdb.loc[tdb['company_name']=='Bat']
-    lemon_tdb = tdb.loc[tdb['company_name']=='Lemon']
-    lemon_tdb=lemon_tdb.reset_index()
-    bat_tdb = bat_tdb.reset_index()
-    bat_start_points = [bat_tdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(bat_tdb))]
-    lemon_start_points = [lemon_tdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(lemon_tdb))]
-    
-    lemon_dc_counts = []
-    bat_dc_counts = []
-    # count the number of trips beginning in each of the council districts
-    for i in range(len(all_bounds)):
-        boundary = all_bounds[i]
-        bat_dc_count = 0
-        lemon_dc_count = 0
-        for bat_pt,lemon_pt in zip(bat_start_points,lemon_start_points):
-            bat_pt = shapely.geometry.Point(bat_pt)
-            lemon_pt = shapely.geometry.Point(lemon_pt)
-            if boundary.contains(bat_pt):
-                bat_dc_count = bat_dc_count + 1
-            if boundary.contains(lemon_pt):
-                lemon_dc_count = lemon_dc_count + 1
-        lemon_dc_counts.append(lemon_dc_count)
-        bat_dc_counts.append(bat_dc_count)
-
-    # plotting trips per council district (double bar per company)
-    trace1 = go.Bar(
-                    y=[count for count in bat_dc_counts ],
-                    x= [x+1 for x in range(15)],
-                    name='Bat'
+    traces = []
+    for co in companies:
+        co_dc_counts = []
+        for df in cd_trips:
+            co_df = df.loc[df['company_name']== co]
+            co_df = co_df.reset_index()
+        #co_start_points = [co_tdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(co_tdb))]
+        #co_dc_counts = [] # count co devices in each of the council districts
+        # count the number of trips beginning in each of the council districts
+        #for i in range(len(all_bounds)):
+        #    boundary = all_bounds[i]
+        #    co_dc_count = 0
+        #    for co_pt in co_start_points:
+        #        co_pt = shapely.geometry.Point(co_pt)
+         #       if boundary.contains(co_pt):
+         #           co_dc_count = co_dc_count + 1
+            co_dc_count = len(co_df)#.append(co_dc_count)
+            co_dc_counts.append(co_dc_count)
+        trace = go.Bar(
+                    y = co_dc_counts,
+                    x = [x for x in range(1,16,1)],
+                    name=str(co)
                     )
-
-    trace2 = go.Bar(
-                y=[count for count in lemon_dc_counts ],
-                x= [x+1 for x in range(15)],
-                name='Lemon'
-                )
-
-    data=[trace1,trace2]
+        traces.append(trace)
+    data= traces
     layout = go.Layout(
                        barmode='group',
                        title="Trips Beginning in Each Council District",
                        yaxis={"title":"Number of Trips"},
                        xaxis={"title":"Council District"},
-                       )
-                       
+                       )            
     trips_per_cd_fig = go.Figure(data=data, layout=layout)
     return trips_per_cd_fig
 
 trips_per_cd_fig = plot_trips_per_cd(tdb)
 
+def plot_cd_start_and_ends(tdb):
+    for i in range(len(tdb)):
+        cur_len = len(tdb['route'][i]['features'])
+        co_end_points = tdb['route'][i]['features'][cur_len - 1]['geometry']['coordinates'] 
+        co_start_points = tdb['route'][i]['features'][cur_len - 1]['geometry']['coordinates'] 
+    
+    
+
+
+
+
 ################################################ create pie chart of trips per company
 print("Generating pie chart of trips per company...")
-tdb_small = tdb
-bat_users = sum(tdb_small['company_name']=='Bat')
-lemon_users = sum(tdb_small['company_name']=='Lemon')
+def plot_trips_per_company(tdb):
+    company_trip_pie_fig = {
+            "data": [
+        {
+        "values": [],
+        "labels": [co for co in companies],
+        "hoverinfo":"label+value",
+        "type": "pie"
+        },
+        ],
+        "layout": {
+        "title":"Trips Per Company"# from {}".format(the_interval),
+         }
+    } 
+    for co in companies:
+        co_users = sum(tdb['company_name']==co)
+        company_trip_pie_fig['data'][0]['values'].append(co_users)
+
+    return company_trip_pie_fig
+
+company_trip_pie_fig = plot_trips_per_company(tdb)
     
-company_trip_pie_fig = {
-    "data": [
-    {
-    "values": [],
-    "labels": [
-    "Bat",
-    "Lemon"
-    ],
-    "hoverinfo":"label+value",
-    "type": "pie"
-    },
-    ],
-    "layout": {
-    "title":"Trips Per Company"# from {}".format(the_interval),
-    }
-    }
-company_trip_pie_fig['data'][0]['values'].append(bat_users)
-company_trip_pie_fig['data'][0]['values'].append(lemon_users)
-    
-
-
-
-
 ############################################# create sankey figure for equity zone flows
-# *currently only council district 10 so there will be no trip starts or ends in the sf valley equity zone
-print("NOW Generating equity zone sankey plot...")
+# *currently only council district 12 so there will be no trip starts or ends in the sf valley equity zone
+print("Generating equity zone sankey plot...")
 
 def read_poly(poly, original, dest):
     interior = []
@@ -379,73 +377,66 @@ def read_area(file_name):
             multi_polygon.append(read_poly(a['geometry']['coordinates'], original, dest))
         return shapely.ops.cascaded_union(multi_polygon)
     
-    
+# read in equity zone boundaries
 city_boundary = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/City_Boundary.shp')
 sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/San_Fernando_Valley.shp')
 non_sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/Non_San_Fernando.shp')
 
-lemon_trips = tdb.loc[tdb['company_name']=='Lemon'].reset_index()
-bat_trips = tdb.loc[tdb['company_name']=='Bat'].reset_index()
 
-lemon_trip_starts = [] # list of lat longs to be converted into geometry points Points
-bat_trip_starts = []
-for i in range(len(lemon_trips)):
-    lemon_trip_starts.append(lemon_trips['route'][i]['features'][0]['geometry']['coordinates'])
-for i in range(len(bat_trips)):
-    bat_trip_starts.append(bat_trips['route'][i]['features'][0]['geometry']['coordinates'])
+# def plot_equity_sankey   ** make it so you can feed it a trips database for each company
+def plot_equity_sankey(tdb):
+    co_trip_starts = []
+    co_trip_ends = []
+    for i in range(len(tdb)):
+        co_trip_starts.append(tdb['route'][i]['features'][0]['geometry']['coordinates'])
+        co_trip_ends.append(tdb['route'][i]['features'][1]['geometry']['coordinates'])
 
-lemon_trip_ends = []
-bat_trip_ends = []
-for i in range(len(lemon_trips)):
-    lemon_trip_ends.append(lemon_trips['route'][i]['features'][1]['geometry']['coordinates'])
-for i in range(len(bat_trips)):
-    bat_trip_ends.append(bat_trips['route'][i]['features'][1]['geometry']['coordinates'])
+    # if length is > 1 do not label title with company
+    val_to_val = 0
+    val_to_nonval = 0
+    val_to_city = 0
+    nonval_to_nonval = 0
+    nonval_to_val = 0
+    nonval_to_city = 0
+    city_to_city = 0
+    city_to_val = 0
+    city_to_nonval = 0
 
-val_to_val = 0
-val_to_nonval = 0
-val_to_city = 0
-nonval_to_nonval = 0
-nonval_to_val = 0
-nonval_to_city = 0
-city_to_city = 0
-city_to_val = 0
-city_to_nonval = 0
-
-for i in range(len(lemon_trip_starts)):
-    startpt = shapely.geometry.Point(lemon_trip_starts[i])
-    endpt = shapely.geometry.Point(lemon_trip_ends[i])
-    if (sf_equity.contains(startpt)):
-        if non_sf_equity.contains(endpt):
-            val_to_nonval=val_to_nonval + 1
-        elif sf_equity.contains(endpt):
-            val_to_val = val_to_val + 1
+    for i in range(len(tdb)):
+        startpt = shapely.geometry.Point(co_trip_starts[i])
+        endpt = shapely.geometry.Point(co_trip_ends[i])
+        if (sf_equity.contains(startpt)):
+            if non_sf_equity.contains(endpt):
+                val_to_nonval=val_to_nonval + 1
+            elif sf_equity.contains(endpt):
+                val_to_val = val_to_val + 1
+            else:
+                val_to_city = val_to_city + 1
+        elif (non_sf_equity.contains(startpt)):
+            if non_sf_equity.contains(endpt):
+                nonval_to_nonval= nonval_to_nonval + 1
+            elif sf_equity.contains(endpt):
+                nonval_to_val = nonval_to_val + 1
+            else:
+                nonval_to_city = nonval_to_city + 1
+        elif  (city_boundary .contains(startpt)):
+            if non_sf_equity.contains(endpt):
+                city_to_nonval= city_to_nonval + 1
+            elif sf_equity.contains(endpt):
+                city_to_val = city_to_val + 1
+            else:
+                city_to_city = city_to_city + 1
         else:
-            val_to_city = val_to_city + 1
-    elif (non_sf_equity.contains(startpt)):
-        if non_sf_equity.contains(endpt):
-            nonval_to_nonval= nonval_to_nonval + 1
-        elif sf_equity.contains(endpt):
-            nonval_to_val = nonval_to_val + 1
-        else:
-            nonval_to_city = nonval_to_city + 1
-    elif  (city_boundary .contains(startpt)):
-        if non_sf_equity.contains(endpt):
-            city_to_nonval= city_to_nonval + 1
-        elif sf_equity.contains(endpt):
-            city_to_val = city_to_val + 1
-        else:
-            city_to_city = city_to_city + 1
-    else:
-        None
+            None    
 
-# hard coded numbers to compensate for only district 10 points in fake data
-val_to_val = 100000
-val_to_nonval = 20000
-val_to_city = 32000
-nonval_to_val = 20000
-city_to_val = 120000
+    # hard coded numbers to compensate for only district 10 points in fake data
+    val_to_val = 100000
+    val_to_nonval = 20000
+    val_to_city = 32000
+    nonval_to_val = 20000
+    city_to_val = 120000
 
-data = dict(
+    data = dict(
             type='sankey',
             node = dict(
                         pad = 10,
@@ -466,10 +457,14 @@ data = dict(
                         color = [ "#a6cbe7", "#a6cbe7", "#a6cbe7","#ffc2a3", "#ffc2a3", "#ffc2a3", "#b2d1b2", "#b2d1b2", "#b2d1b2"]
                         )
             )
-    
-layout =  dict(
-                   title = "Lemon Trip Paths by Equity Zone <br>",
-                   font = dict(
+    if len(tdb['company_name'].unique()) is 1:
+        co = tdb['company_name'].unique()[0]
+    else:
+        co = "Total"
+
+    layout =  dict(
+                   title = "{} Trip Paths by Equity Zone <br>".format(co),
+                   font = dict( 
                                size = 12
                                ),
                    updatemenus= [
@@ -492,8 +487,16 @@ layout =  dict(
                                  ]
                    )
 
+    sankey_fig = go.Figure(data=[data], layout=layout)
+    return sankey_fig
 
-sankey_fig = go.Figure(data=[data], layout=layout)
+sankey_fig = plot_equity_sankey(tdb) # will plot total equity flows 
+
+# plot sankey for each company
+#for co in companies:
+ #   d = tdb.loc[tdb['company_name']==co]
+ #   plot = plot_equity_sankey(d)
+
 
 
 ############################################# create bar chart for trips per hour
@@ -545,7 +548,7 @@ print("Generating trips per hour figure...")
 hours_plot_fig = plot_trips_per_hour(tdb_filtered)
 
 ########################################################## create plot of 24 hour availabilities per device ratios
-
+import numpy
 # to read in availability view from server
 def get_availability(con):
     availability_db = pandas.read_sql('SELECT * FROM "availability"',con,index_col=None)
@@ -558,12 +561,17 @@ availdb = get_availability(con)
 # helper function for availability ratio plot that returns the number of availability periods in a given hour from availability view
 def avail_dev_in_hour(hour,pd_df): 
     start_time = [time for time in pd_df['start_time']]
-    end_time = [time for time in pd_df['start_time']]
+    end_time = [time for time in pd_df['end_time']]
     hr = hour
     count = 0
-    for i in range(len(pd_df)): 
+    for i in range(len(end_time)): 
         t_s = start_time[i]
         t_e = end_time[i]
+       # print("t_e  is: ",t_e )
+        if numpy.isnan(t_e):
+            break
+        if numpy.isnan(t_s):
+            break
         if datetime.datetime.utcfromtimestamp(t_s).hour==hr:
             count = count + 1
         elif datetime.datetime.utcfromtimestamp(t_s).hour<hr and datetime.datetime.utcfromtimestamp(t_e).hour>hr:
@@ -601,7 +609,7 @@ for i in range(0,24,1):
 bat_zeros=[]
 lemon_zeros=[]
 for i in range(len(tot_bat_avail_per_24hour)):#,tot_lemon_avail_per_24hour):
-    if tot_bat_avail_per_24hour[i] == 0:
+    if tot_bat_avail_per_24hour[i] == 0: # record indices with zeros to allow for dividing by 0 for ratio calculations
         bat_zeros.append(i)
     if tot_lemon_avail_per_24hour[i] == 0:
         lemon_zeros.append(i)
@@ -634,7 +642,7 @@ trace0 = go.Scatter(
 
 trace1 = go.Scatter(
     x = [x for x in range(0,24,1)],
-    y = [15]* 24, # fix this to be the standard ratio of avail per device
+    y = [2]* 24, # fix this to be the standard ratio of avail per device
     mode = 'lines',
     name = 'Required Standard',
     line = dict(
@@ -689,21 +697,22 @@ app.layout = html.Div(
                                             dcc.Dropdown(id = 'cd',
                                              
                                     options=[
-                                    {'label': '1', 'value': 1},
-                                    {'label': '2', 'value': 2},
-                                    {'label': '3', 'value': 3},
-                                    {'label': '4', 'value': 4},
-                                    {'label': '5', 'value': 5},
-                                    {'label': '6', 'value': 6},
-                                    {'label': '7', 'value': 7},
-                                    {'label': '8', 'value': 8},
-                                    {'label': '9', 'value': 9},
-                                    {'label': '10', 'value': 10},
-                                    {'label': '11', 'value': 11},
-                                    {'label': '12', 'value': 12},
-                                    {'label': '13', 'value': 13},
-                                    {'label': '14', 'value': 14},
-                                    {'label': '15', 'value': 15},
+                                    {'label': 'Total City Aggregate', 'value': None},
+                                    {'label': 'Council District 1', 'value': 1},
+                                    {'label': 'Council District 2', 'value': 2},
+                                    {'label': 'Council District 3', 'value': 3},
+                                    {'label': 'Council District 4', 'value': 4},
+                                    {'label': 'Council District 5', 'value': 5},
+                                    {'label': 'Council District 6', 'value': 6},
+                                    {'label': 'Council District 7', 'value': 7},
+                                    {'label': 'Council District 8', 'value': 8},
+                                    {'label': 'Council District 9', 'value': 9},
+                                    {'label': 'Council District 10', 'value': 10},
+                                    {'label': 'Council District 11', 'value': 11},
+                                    {'label': 'Council District 12', 'value': 12},
+                                    {'label': 'Council District 13', 'value': 13},
+                                    {'label': 'Council District 14', 'value': 14},
+                                    {'label': 'Council District 15', 'value': 15},  
                                     ],
                                     value=None,
                                     )
@@ -722,7 +731,6 @@ app.layout = html.Div(
                                                      figure =  hours_plot_fig,
                                                      )
                                            ],
-                                          #className='four columns',
                                           style={'margin-top': '20'}
                                           ),
                                 html.Div(
@@ -747,23 +755,19 @@ app.layout = html.Div(
 
 
 
-# helper functions
+# helper function returns trips that are in a specified council district
 def trips_in_cd(tripdb,cd_num):
     print(type(cd_num))
-    area = all_bounds[ cd_num+1 ] 
-    points=[]
-    for i in range(len(tripdb)): 
-        pt = tdb['route'][i]['features'][0]['geometry']['coordinates'][0],tdb['route'][0]['features'][0]['geometry']['coordinates'][1]
-        points.append( pt)
-    bool_vec = [area.contains(shapely.geometry.Point(p)) for p in points]   
+    boundary = all_bounds[ cd_num-1 ] 
+    co_start_points = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
+    co_pts = [shapely.geometry.Point(co_pt) for co_pt in co_start_points]
+    bool_vec = [boundary.contains(p) for p in co_pts]   
     return tripdb.loc[bool_vec]
-
-
 
 @app.callback(Output('company_trips_fig', 'figure'),
               [Input('cd', 'value')],
                )
-def make_main_figure(selected_cd):
+def update_company_figure(selected_cd):
     #if cd=='1':
      #   d = trips_in_cd(tdb,1)
     #else:
@@ -773,7 +777,7 @@ def make_main_figure(selected_cd):
         d = tdb
         new_label = "City Wide"
     else:
-        d= trips_in_cd(tdb,selected_cd)
+        d= cd_trips[selected_cd -1]
         new_label = "in Council District " + str(selected_cd)
     bat_users = sum(d['company_name']=='Bat')
     lemon_users = sum(d['company_name']=='Lemon')
@@ -798,11 +802,92 @@ def make_main_figure(selected_cd):
     company_trip_pie_fig['data'][0]['values'].append(lemon_users)
     return company_trip_pie_fig
 
-
+@app.callback(Output('hours_fig', 'figure'),
+              [Input('cd', 'value')],
+               )
+def update_hour_fig(selected_cd):
+    t = cd_trips[selected_cd -1]
+    start_times = [t['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(t))]
+    hour_vec=[datetime.datetime.fromtimestamp(d).hour for d in start_times]
+    hour_vec_ampm = [to_twelve_hour(t) for t in hour_vec]
+    ampm_hours = ['12AM', '1AM','2AM','3AM','4AM','5AM', '6AM','7AM','8AM','9AM','10AM', '11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM']
+    yvals=[]
+    for i in range(len(ampm_hours)):
+        time = ampm_hours[i]
+        yvals.append(sum([(hour_vec_ampm[j]==time) for j in range(len(hour_vec_ampm))]))
+    
+    trace=go.Bar(x=ampm_hours,y=yvals)
+    data=[trace]
+    if selected_cd is not None:
+        layout = layout=go.Layout(title='Trips Taken Per Hour in Council District {}'.format(str(selected_cd)),barmode= 'group',bargroupgap= 0.5)
+    else:
+        layout=go.Layout(title='Total Trips Taken Per Hour',barmode= 'group',bargroupgap= 0.5)
+    layout.yaxis=dict(title= "Number of Trips")
+    layout.xaxis={
+    'type': 'date',
+    'tickformat': '%H:%M',
+    }
+    layout.xaxis=dict(title= "Hour of Day",tickmode='linear')
+    layout.plot_bgcolor='rgb(11, 0, 0)'
+    hours_fig=go.Figure(data=data,layout=layout)
+    return hours_fig
 
 # In[]:
 # Main
 if __name__ == '__main__':
-    app.server.run(debug=False)
+    app.server.run(debug=False,threaded=True)
 
 
+
+
+'''
+# bar chart plot for trip starts and ends per council district
+import plotly.graph_objs as go
+import plotly.plotly as py
+def plot_cd_start_and_ends(tdb):
+    co_end_points = []
+    co_start_points = []
+    for i in range(len(tdb)):
+        cur_len = len(tdb['route'][i]['features'])
+        co_end_points.append(tdb['route'][i]['features'][cur_len - 1]['geometry']['coordinates'] )
+        co_start_points.append(tdb['route'][i]['features'][0]['geometry']['coordinates'])
+    # count starts in each cd
+    co_end_points = [shapely.geometry.Point(co_pt) for co_pt in co_end_points]
+    co_start_points = [shapely.geometry.Point(co_pt) for co_pt in co_start_points]
+    
+    total_cd_starts =[]
+    total_cd_ends = []
+
+    for i in range(len(all_bounds)):
+        boundary = all_bounds[i]
+        start_cd_count = 0
+        end_cd_count = 0
+        for st,end in zip(co_start_points,co_end_points):
+            #pt = shapely.geometry.Point(co_pt)
+            if boundary.contains(st):
+                start_cd_count = start_cd_count + 1
+            if boundary.contains(end):
+                end_cd_count = end_cd_count + 1
+        total_cd_starts.append(start_cd_count)
+        total_cd_ends.append(end_cd_count)
+    
+    trace = go.Bar(
+                    y = total_cd_starts,
+                    x = [x for x in range(1,16,1)],
+                    name="trip starts",
+                marker=dict(
+                color='green'
+                    )
+    )
+    trace2 = go.Bar(y= total_cd_ends, x = [x for x in range(1,16,1)],name="trip ends",marker=dict(
+        color='red'))
+    data= [trace,trace2]
+    layout = go.Layout(
+                       barmode='group',
+                       title="Trip Starts and Ends Per Council District",
+                       yaxis={"title":"Counts"},
+                       xaxis={"title":"Council District"},
+                       )            
+    trips_per_cd_fig = go.Figure(data=data, layout=layout)
+    return trips_per_cd_fig
+'''
