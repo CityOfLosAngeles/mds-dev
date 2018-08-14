@@ -1,9 +1,9 @@
+#!/usr/bin/env python3
 """
     Running this script generates a locally hosted Dash application with figures contructed from the transit SQL database.
     - currently, username and file paths need to be changed for connect, read_bounds, and read_area
     - mapping capabilities not yet functional
     - this script requires neccessary views: availability,
-    - currently end points are computer as the second point in route.
     
     to use:    python dash_app.py [username] [password] [database name]
 
@@ -14,6 +14,11 @@ import os
 import pickle
 import copy
 import datetime as dt
+
+# debug cron task
+# import sys
+# print(sys.path)
+
 import pandas as pd
 from flask import Flask
 from flask_cors import CORS
@@ -43,8 +48,9 @@ from mapboxgl.viz import *
 from shapely.geometry import shape,mapping, Point, Polygon, MultiPolygon
 import shapely.ops
 import dash_html_components as html
-import fiona # MUST KEEP FIONA IMPORT AFTER SHAPELY IMPORTS
+import fiona # must keep Fiona after shapely imports to avoid errors
 import controls # controls allows for modularity with company names, plotly account settings, 
+
 app = dash.Dash(__name__)
 app.css.append_css({'external_url': 'https://cdn.rawgit.com/plotly/dash-app-stylesheets/2d266c578d2a6e8850ebce48fdb52759b2aef506/stylesheet-oil-and-gas.css'})  # noqa: E501
 server = app.server
@@ -56,7 +62,7 @@ if 'DYNO' in os.environ:
                               })
 
 
-################################################## read in data from server
+################################################################### read in data from server
 def connect(user,password,db,host='localhost',port=5432):
     url = 'postgresql://{}:{}@{}:{}/{}'
     url = url.format(user,password,host,port,db)
@@ -66,12 +72,12 @@ def connect(user,password,db,host='localhost',port=5432):
 def get_data(con):
     trips_db = pandas.read_sql('SELECT * FROM "trips"',con,index_col=None)
     status_change_db = pandas.read_sql('SELECT * FROM "status_change"',con,
-                                       index_col=None) # fix: adjust command to read in most recent week
+                                       index_col=None) # to fix: adjust command to read in most recent week
     return (trips_db,status_change_db)
 
 
 print ("Loading in server data...")
-# extract arguments to connect to server
+
 parser = argparse.ArgumentParser()
 parser.add_argument("user", type=str,
                     help="username to access postgresql database")
@@ -81,24 +87,26 @@ parser.add_argument("database", type=str,
                     help="database name")
 args = parser.parse_args()
 
+# extract arguments to connect to server
 user = args.user
 password = args.password
 db = args.database
-
 con = connect(user,password,db)
 tdb, scdb = get_data(con)
 
-################################################ extract company names and the number of companies
+###################################################################  extract company names and the number of companies
 companies = tdb['company_name'].unique()
 
-################################################# read in council district boundaries
-print("Loading in council district shapefiles...")
+
+###################################################################  read in council district boundaries
+print("Processing council districts...")
 
 # function to read in council district boundaries
 def read_bounds(filename):
-    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/'+filename)# fix file path issue
+    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/' + filename)# fix file path issue
     return bounds
 
+# read in council district boundaries
 bounds= read_bounds('CouncilDistricts.shp')
 
 all_bounds = [] # boundaries of all 15 council districts
@@ -120,126 +128,54 @@ for i in range(len(bounds)):
     boundary = shapely.geometry.MultiPolygon(polygons) 
     all_bounds.append(boundary)
 
-# fix how the order of bounds in shapefiles is random with respect to council districts
-myorder=[10, 4, 3, 6, 5, 2, 0, 13, 12, 11, 9, 1, 7, 8, 14]
-all_bounds = [ all_bounds[i] for i in myorder]
+# adjust order of bounds in shapefiles to align with council district number
+order=[10, 4, 3, 6, 5, 2, 0, 13, 12, 11, 9, 1, 7, 8, 14]
+all_bounds = [all_bounds[i] for i in order]
 
+################################################################### preproccess trips for each council district
 
-################################################  preproccess trips for each council district
+# begin comment 
+'''
 def trips_in_cd(tripdb,cd_num):
-    boundary = all_bounds[ cd_num-1 ] 
+    boundary = all_bounds[ cd_num - 1 ] 
     co_start_points = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
     co_pts = [shapely.geometry.Point(co_pt) for co_pt in co_start_points]
     bool_vec = [boundary.contains(p) for p in co_pts]   
     return tripdb.loc[bool_vec]
 
-# extract each cd's trips for querying
+# extract each council district's trips for querying
 cd_trips = []
 for i in range(1,16,1):
     cd_trips.append(trips_in_cd(tdb,i))
 
 
-
-########################################################## create map of event_types
+################################################################### create status change map
 '''
-
-
-print ("Generating event status map...")
-#OLD
-
-layout = dict(
-    autosize=True,
-    height=500,
-    font=dict(color='#CCCCCC'),
-    titlefont=dict(color='#CCCCCC', size='14'),
-    margin=dict(
-    l=35,
-    r=35,
-    b=35,
-    t=45
-    ),
-    hovermode="closest",
-    plot_bgcolor="#191A1A",
-    paper_bgcolor="#020202",
-    legend=dict(font=dict(size=10), orientation='h'),
-    title='Satellite Overview',
-    mapbox=dict(
-    accesstoken='pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA',
-    style="dark",
-    center=dict(
-    lon=-78.05,
-    lat=42.54
-    ),
-    zoom=7,
-    )
-    )
-    
-scdb_small = scdb.head(100)
-start_points =[literal_eval(scdb_small['location'][i]) for i in scdb_small['location'].index]
-events = [scdb_small['event_type'][i] for i in range(len(scdb_small))]
-    
-# create dataframes for startpoints and endpoints with lat and long coords
-start_d = {'lat':[], 'lon':[],'event_type':[]}
-    
-for start_p in start_points:
-    start_lon,start_lat = start_p[0],start_p[1]
-    start_d['lat'].append(start_lat)
-    start_d['lon'].append(start_lon)
-    
-for event_type in events:
-    start_d['event_type'].append(event_type)
-    
-startdb = pandas.DataFrame.from_dict(start_d)
-WELL_COLORS = dict(available= 'rgb(139,195,74)', unavailable = 'yellow', reserved= 'rgb(2,136,209)', removed='rgb(211,47,47)' )
-traces = []
- #for ev_type, dff in startdb.groupby('event_type'):
-trace = dict(
-    type='scattermapbox',
-    lon=startdb['lon'],
-    lat=startdb['lat'],
-    # name= ev_type,
-    text = startdb['event_type'],
-    marker=dict(
-    size=11,
-    opacity=1,
-    #color=WELL_COLORS[ev_type]
-    ),
-    )
-traces.append(trace)
-    
-    
-lay = go.Layout()
-    #lay['hovermode']='closest'
-    #lay['autosize'] = True
-    #lay['mapbox']['zoom'] = 11
-lay['mapbox']['center']=dict(
-    lon=-118.33,
-    lat=34.017)
-    #lay['mapbox']['bearing']=0
-event_fig = go.Figure(data = traces,layout = lay)
-
-
+print ("NOW Generating status change map...")
+token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA'
+ 
 # create map of event_types
-scdb_small = scdb.head(100)
-start_points =[literal_eval(scdb_small['location'][i]) for i in scdb_small['location'].index]
-events = [scdb_small['event_type'][i] for i in range(len(scdb_small))]
+def plot_status_changes(scdb_new):
+    scdb_small = scdb.head(100)
+    start_points =[literal_eval(scdb_small['location'][i]) for i in scdb_small['location'].index]
+    events = [scdb_small['event_type'][i] for i in range(len(scdb_small))]
 
-# create dataframes for startpoints and endpoints with lat and long coords
-start_d = {'lat':[], 'lon':[],'event_type':[]}
+    # create dataframes for startpoints and endpoints with lat and long coords
+    start_d = {'lat':[], 'lon':[],'event_type':[]}
 
-for start_p in start_points:
-    start_lon,start_lat = start_p[0],start_p[1]
-    start_d['lat'].append(start_lat)
-    start_d['lon'].append(start_lon)
+    for start_p in start_points:
+        start_lon,start_lat = start_p[0],start_p[1]
+        start_d['lat'].append(start_lat)
+        start_d['lon'].append(start_lon)
 
-for event_type in events:
-    start_d['event_type'].append(event_type)
+    for event_type in events:
+        start_d['event_type'].append(event_type)
 
-startdb = pandas.DataFrame.from_dict(start_d)
-WELL_COLORS = dict(available= 'rgb(139,195,74)', unavailable = 'yellow', reserved= 'rgb(2,136,209)', removed='rgb(211,47,47)' )
-traces = []
-for ev_type, dff in startdb.groupby('event_type'):
-    trace = dict(
+    startdb = pandas.DataFrame.from_dict(start_d)
+    COLORS = dict(available= 'rgb(139,195,74)', unavailable = 'yellow', reserved= 'rgb(2,136,209)', removed='rgb(211,47,47)' )
+    traces = []
+    for ev_type, dff in startdb.groupby('event_type'):
+        trace = dict(
                  type='scattermapbox',
                  lon=dff['lon'],
                  lat=dff['lat'],
@@ -248,26 +184,31 @@ for ev_type, dff in startdb.groupby('event_type'):
                  marker=dict(
                              size=11,
                              opacity=1,
-                             color=WELL_COLORS[ev_type]
+                             color=COLORS[ev_type]
                              ),
                  )
-    traces.append(trace)
+        traces.append(trace)
 
-lay = go.Layout()
-lay['hovermode']='closest'
-lay['autosize'] = True
-lay['mapbox']['zoom'] = 11
-lay['mapbox']['center']=dict(
+    lay = go.Layout()
+    lay['hovermode']='closest'
+    lay['autosize'] = True
+    lay['mapbox']['accesstoken']=token
+    lay['mapbox']['zoom'] = 11
+    lay['mapbox']['center']=dict(
                              lon=-118.33,
                              lat=34.017)
-lay['mapbox']['bearing']=0
-lay['title'] = 'Locations of Scooter Statuses'
+    lay['mapbox']['bearing']=0
+    lay['title'] = 'Locations of Scooter Statuses'
+    map_fig = go.Figure(data = traces,layout = lay)
+    return map_fig
 
-map_fig = go.Figure(data = traces,layout = lay)
+#plot = html.Embed(
+
+map_fig = plot_status_changes(scdb)
 
 
 '''
-############################################### create bar chart for trips per council district
+###################################################################  create bar chart for trips per council district
 print("Generating plot of trips per council district...")
 
 # creates double-bar chart for the number of trips taken in each council district per company
@@ -276,50 +217,33 @@ def plot_trips_per_cd(tdb):
     for co in companies:
         co_dc_counts = []
         for df in cd_trips:
-            co_df = df.loc[df['company_name']== co]
+            co_df = df.loc[df['company_name'] == co]
             co_df = co_df.reset_index()
-        #co_start_points = [co_tdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(co_tdb))]
-        #co_dc_counts = [] # count co devices in each of the council districts
-        # count the number of trips beginning in each of the council districts
-        #for i in range(len(all_bounds)):
-        #    boundary = all_bounds[i]
-        #    co_dc_count = 0
-        #    for co_pt in co_start_points:
-        #        co_pt = shapely.geometry.Point(co_pt)
-         #       if boundary.contains(co_pt):
-         #           co_dc_count = co_dc_count + 1
-            co_dc_count = len(co_df)#.append(co_dc_count)
+            co_dc_count = len(co_df)
             co_dc_counts.append(co_dc_count)
         trace = go.Bar(
                     y = co_dc_counts,
                     x = [x for x in range(1,16,1)],
-                    name=str(co)
+                    name = str(co)
                     )
         traces.append(trace)
-    data= traces
+    data = traces
     layout = go.Layout(
-                       barmode='group',
-                       title="Trips Beginning in Each Council District",
-                       yaxis={"title":"Number of Trips"},
-                       xaxis={"title":"Council District"},
+                       barmode = 'group',
+                       title = "Trips Beginning in Each Council District",
+                       yaxis = {"title": "Number of Trips"},
+                       xaxis = {"title": "Council District"},
                        )            
-    trips_per_cd_fig = go.Figure(data=data, layout=layout)
+    trips_per_cd_fig = go.Figure(data = data, layout = layout)
     return trips_per_cd_fig
 
 trips_per_cd_fig = plot_trips_per_cd(tdb)
 
-def plot_cd_start_and_ends(tdb):
-    for i in range(len(tdb)):
-        cur_len = len(tdb['route'][i]['features'])
-        co_end_points = tdb['route'][i]['features'][cur_len - 1]['geometry']['coordinates'] 
-        co_start_points = tdb['route'][i]['features'][cur_len - 1]['geometry']['coordinates'] 
-    
-    
 
+      
 
+###################################################################  create pie chart of trips per company
 
-
-################################################ create pie chart of trips per company
 print("Generating pie chart of trips per company...")
 def plot_trips_per_company(tdb):
     company_trip_pie_fig = {
@@ -327,24 +251,25 @@ def plot_trips_per_company(tdb):
         {
         "values": [],
         "labels": [co for co in companies],
-        "hoverinfo":"label+value",
+        "hoverinfo": "label + value",
         "type": "pie"
-        },
+        }, 
         ],
         "layout": {
-        "title":"Trips Per Company"# from {}".format(the_interval),
+        "title": "Trips Per Company"
          }
     } 
     for co in companies:
-        co_users = sum(tdb['company_name']==co)
+        co_users = sum(tdb['company_name'] == co)
         company_trip_pie_fig['data'][0]['values'].append(co_users)
 
     return company_trip_pie_fig
 
 company_trip_pie_fig = plot_trips_per_company(tdb)
-    
-############################################# create sankey figure for equity zone flows
-# *currently only council district 12 so there will be no trip starts or ends in the sf valley equity zone
+
+
+###################################################################  create sankey figure for equity zone flows
+# only council district 10 is represented in fake data so there will be no trip starts or ends in the sf valley equity zone
 print("Generating equity zone sankey plot...")
 
 def read_poly(poly, original, dest):
@@ -382,14 +307,16 @@ city_boundary = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/Ci
 sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/San_Fernando_Valley.shp')
 non_sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/Non_San_Fernando.shp')
 
-
 # def plot_equity_sankey   ** make it so you can feed it a trips database for each company
 def plot_equity_sankey(tdb):
     co_trip_starts = []
     co_trip_ends = []
+    
+    
     for i in range(len(tdb)):
         co_trip_starts.append(tdb['route'][i]['features'][0]['geometry']['coordinates'])
         co_trip_ends.append(tdb['route'][i]['features'][1]['geometry']['coordinates'])
+    
 
     # if length is > 1 do not label title with company
     val_to_val = 0
@@ -398,9 +325,10 @@ def plot_equity_sankey(tdb):
     nonval_to_nonval = 0
     nonval_to_val = 0
     nonval_to_city = 0
-    city_to_city = 0
-    city_to_val = 0
-    city_to_nonval = 0
+    city_to_city = 300000
+    city_to_val = 20000
+    city_to_nonval = 1200000
+
 
     for i in range(len(tdb)):
         startpt = shapely.geometry.Point(co_trip_starts[i])
@@ -427,13 +355,16 @@ def plot_equity_sankey(tdb):
             else:
                 city_to_city = city_to_city + 1
         else:
-            None    
+            None   
 
-    # hard coded numbers to compensate for only district 10 points in fake data
+
+    # hard coded values to compensate for lack of valley representation in fake data
     val_to_val = 100000
     val_to_nonval = 20000
     val_to_city = 32000
     nonval_to_val = 20000
+    nonval_to_nonval = 300000
+    nonval_to_city = 650000
     city_to_val = 120000
 
     data = dict(
@@ -457,29 +388,30 @@ def plot_equity_sankey(tdb):
                         color = [ "#a6cbe7", "#a6cbe7", "#a6cbe7","#ffc2a3", "#ffc2a3", "#ffc2a3", "#b2d1b2", "#b2d1b2", "#b2d1b2"]
                         )
             )
+
     if len(tdb['company_name'].unique()) is 1:
         co = tdb['company_name'].unique()[0]
     else:
-        co = "Total"
+        co = ""
 
     layout =  dict(
-                   title = "{} Trip Paths by Equity Zone <br>".format(co),
+                   title = "{} Trip Traffic Between Equity Zones <br>".format(co),
                    font = dict( 
                                size = 12
                                ),
-                   updatemenus= [
+                   updatemenus = [
                                  dict(
-                                      y=0.6,
-                                      buttons=[
+                                      y = 0.6,
+                                      buttons = [
                                                dict(
-                                                    label='Horizontal',
-                                                    method='restyle',
-                                                    args=['orientation', 'h']
+                                                    label = 'Horizontal',
+                                                    method = 'restyle',
+                                                    args = ['orientation', 'h']
                                                     ),
                                                dict(
-                                                    label='Vertical',
-                                                    method='restyle',
-                                                    args=['orientation', 'v']
+                                                    label = 'Vertical',
+                                                    method = 'restyle',
+                                                    args = ['orientation', 'v']
                                                     )
                                                ]
                                       
@@ -487,7 +419,7 @@ def plot_equity_sankey(tdb):
                                  ]
                    )
 
-    sankey_fig = go.Figure(data=[data], layout=layout)
+    sankey_fig = go.Figure(data = [data], layout = layout)
     return sankey_fig
 
 sankey_fig = plot_equity_sankey(tdb) # will plot total equity flows 
@@ -499,24 +431,27 @@ sankey_fig = plot_equity_sankey(tdb) # will plot total equity flows
 
 
 
-############################################# create bar chart for trips per hour
-# helper function for trips per hour
+################################################################### create bar chart for trips per hour
+# function for plotting trips per hour returning pandas dataframe with trips in a specified interval
+# pd_df: trips pandas dataframe
+# firstday and lastday: datetime time stamps
 def obs_in_days(firstday,lastday,pd_df):
     start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
-    bool_vec = [((datetime.datetime.utcfromtimestamp(d) >=firstday) & (datetime.datetime.utcfromtimestamp(d)<= lastday)) for d in start_time]
+    bool_vec = [((datetime.datetime.utcfromtimestamp(d) >= firstday) & (datetime.datetime.utcfromtimestamp(d) <= lastday)) for d in start_time]
     return pd_df.loc[bool_vec].reset_index()
 
-# helper function used for plotting trips per hour
+# function used for plotting trips per hour, returns am-pm times from military time
+# hour: integer between 0 and 23
 def to_twelve_hour(hour):
     if hour > 12:
-        new=hour-12
-        return str(new)+'PM'
+        new = hour - 12
+        return str(new) + 'PM'
     elif hour == 12:
-        return str(hour)+ 'PM'
+        return str(hour) + 'PM'
     elif hour == 0:
-        return str(12)+ 'AM'
+        return str(12) + 'AM'
     else:
-        return str(hour)+'AM'
+        return str(hour) + 'AM'
 
 # plots the number of trips taken per hour as a bar chart
 def plot_trips_per_hour(tdb):
@@ -524,22 +459,22 @@ def plot_trips_per_hour(tdb):
     hour_vec=[datetime.datetime.fromtimestamp(d).hour for d in start_times]
     hour_vec_ampm = [to_twelve_hour(t) for t in hour_vec]
     ampm_hours = ['12AM', '1AM','2AM','3AM','4AM','5AM', '6AM','7AM','8AM','9AM','10AM', '11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM']
-    yvals=[]
+    yvals = []
     for i in range(len(ampm_hours)):
         time = ampm_hours[i]
-        yvals.append(sum([(hour_vec_ampm[j]==time) for j in range(len(hour_vec_ampm))]))
+        yvals.append(sum([(hour_vec_ampm[j] == time) for j in range(len(hour_vec_ampm))]))
     
-    trace=go.Bar(x=ampm_hours,y=yvals)
+    trace=go.Bar(x = ampm_hours,y = yvals)
     data=[trace]
-    layout=go.Layout(title='Trips Taken Per Hour',barmode= 'group',bargroupgap= 0.5)
-    layout.yaxis=dict(title= "Number of Trips")
-    layout.xaxis={
+    layout=go.Layout(title = 'Trips Per Hour',barmode = 'group',bargroupgap = 0.5)
+    layout.yaxis = dict(title = "Number of Trips")
+    layout.xaxis = {
     'type': 'date',
     'tickformat': '%H:%M',
     }
-    layout.xaxis=dict(title= "Hour of Day",tickmode='linear')
-    layout.plot_bgcolor='rgb(11, 0, 0)'
-    hours_fig=go.Figure(data=data,layout=layout)
+    layout.xaxis = dict(title = "Hour of Day",tickmode = 'linear')
+    layout.plot_bgcolor = 'rgb(11, 0, 0)'
+    hours_fig = go.Figure(data = data,layout = layout)
     return hours_fig
 
 # can filter trips database using obs_in functions for date window specification
@@ -547,7 +482,7 @@ tdb_filtered = obs_in_days(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.da
 print("Generating trips per hour figure...")
 hours_plot_fig = plot_trips_per_hour(tdb_filtered)
 
-########################################################## create plot of 24 hour availabilities per device ratios
+###################################################################  create plot of 24 hour availabilities per device ratios
 import numpy
 # to read in availability view from server
 def get_availability(con):
@@ -567,7 +502,6 @@ def avail_dev_in_hour(hour,pd_df):
     for i in range(len(end_time)): 
         t_s = start_time[i]
         t_e = end_time[i]
-       # print("t_e  is: ",t_e )
         if numpy.isnan(t_e):
             break
         if numpy.isnan(t_s):
@@ -584,20 +518,20 @@ def avail_dev_in_hour(hour,pd_df):
 
 print("Generating availability ratio plot...")
 
-# get both companies' availability view rows
-lemon_avail = availdb.loc[availdb['company_name']=='Lemon']
-bat_avail = availdb.loc[availdb['company_name']=='Bat']
+# extract both companies' availability view rows
+lemon_avail = availdb.loc[availdb['company_name'] == 'Lemon']
+bat_avail = availdb.loc[availdb['company_name'] == 'Bat']
 
 # compute the unique devices for count of deployed devices per company
 num_bat = len(bat_avail['device_id'].unique())
 num_lemon = len(lemon_avail['device_id'].unique())
 
-tot_bat_dev_per_24hour = [num_bat]* 24
-tot_lemon_dev_per_24hour = [num_lemon]* 24
+tot_bat_dev_per_24hour = [num_bat] * 24
+tot_lemon_dev_per_24hour = [num_lemon] * 24
 
 # compute the number of available windows during each of 24 hours ** counting overlapping hours too
-tot_bat_avail_per_24hour=[]
-tot_lemon_avail_per_24hour=[]
+tot_bat_avail_per_24hour = []
+tot_lemon_avail_per_24hour = []
 
 for i in range(0,24,1):
     batavail = avail_dev_in_hour(i,bat_avail)
@@ -606,8 +540,8 @@ for i in range(0,24,1):
     tot_lemon_avail_per_24hour.append(lemonavail)
 
 # adjust zeros for ratio calculation 
-bat_zeros=[]
-lemon_zeros=[]
+bat_zeros = []
+lemon_zeros = []
 for i in range(len(tot_bat_avail_per_24hour)):#,tot_lemon_avail_per_24hour):
     if tot_bat_avail_per_24hour[i] == 0: # record indices with zeros to allow for dividing by 0 for ratio calculations
         bat_zeros.append(i)
@@ -617,11 +551,11 @@ for i in range(len(tot_bat_avail_per_24hour)):#,tot_lemon_avail_per_24hour):
 for i in bat_zeros:
     tot_bat_avail_per_24hour[i] = 0.01
 for i in lemon_zeros:
-    tot_lemon_avail_per_24hour[i]=0.01
+    tot_lemon_avail_per_24hour[i] = 0.01
 
 # compute number of availability windows per device: # availibility / total devices
-lemon_avail_ratio = [float(tot_lemon_avail_per_24hour[i]) / tot_lemon_dev_per_24hour[i] for i in range(24)]#num avail  per num devices
-bat_avail_ratio = [float(tot_bat_avail_per_24hour[i]) / tot_bat_dev_per_24hour[i] for i in range(24)]# num avail  per num devices
+lemon_avail_ratio = [float( tot_lemon_avail_per_24hour[i] ) / tot_lemon_dev_per_24hour[i] for i in range(24)]#num avail  per num devices
+bat_avail_ratio = [float( tot_bat_avail_per_24hour[i] )  / tot_bat_dev_per_24hour[i] for i in range(24)]# num avail  per num devices
 
 # Create a trace
 import plotly.graph_objs as go
@@ -641,8 +575,8 @@ trace0 = go.Scatter(
 )
 
 trace1 = go.Scatter(
-    x = [x for x in range(0,24,1)],
-    y = [2]* 24, # fix this to be the standard ratio of avail per device
+    x = [ x for x in range(0,24,1) ],
+    y = [2] * 24, # adjust this '[2]' to be the required standard ratio of availability per device per hour
     mode = 'lines',
     name = 'Required Standard',
     line = dict(
@@ -658,192 +592,12 @@ layout = dict(title = 'Availabilities Per Device',
               )
 avail_per_dev_fig = go.Figure(data = data, layout = layout)
 
-#################################################################### Create app layout
-app.layout = html.Div(
-                      [
-                       html.Div(
-                                [
-                                 html.H1(
-                                         'Dockless Scooter Dashboard - Weekly Overview',
-                                         className='eight columns',
-                                         ),
-                                 html.Img(
-                                          src="https://static1.squarespace.com/static/5952a8abbf629aef69513d41/t/595565dd4f14bc185894d47d/1498768870821/New+LADOT+Logo.png",
-                                          className='one columns',
-                                          style={
-                                          'height': '100',
-                                          'width': '225',
-                                          'float': 'right',
-                                          'position': 'relative',
-                                          },
-                                          ),
-                                 ],
-                                className='row'
-                                ),
-                       dcc.Graph(
-                                 id='trips_per_cd_fig',
-                                 figure = trips_per_cd_fig,
-                                 style={'margin-top': '20'}
-                                 ),
-                        dcc.Graph(
-                                id='sankey_fig',
-                                 figure = sankey_fig,
-                                style={'margin-top': '20'}
-                                ),
-                       html.Div(
-                                [
-                                html.Div([
-                                            html.Label('Select Council District'),
-                                            dcc.Dropdown(id = 'cd',
-                                             
-                                    options=[
-                                    {'label': 'Total City Aggregate', 'value': None},
-                                    {'label': 'Council District 1', 'value': 1},
-                                    {'label': 'Council District 2', 'value': 2},
-                                    {'label': 'Council District 3', 'value': 3},
-                                    {'label': 'Council District 4', 'value': 4},
-                                    {'label': 'Council District 5', 'value': 5},
-                                    {'label': 'Council District 6', 'value': 6},
-                                    {'label': 'Council District 7', 'value': 7},
-                                    {'label': 'Council District 8', 'value': 8},
-                                    {'label': 'Council District 9', 'value': 9},
-                                    {'label': 'Council District 10', 'value': 10},
-                                    {'label': 'Council District 11', 'value': 11},
-                                    {'label': 'Council District 12', 'value': 12},
-                                    {'label': 'Council District 13', 'value': 13},
-                                    {'label': 'Council District 14', 'value': 14},
-                                    {'label': 'Council District 15', 'value': 15},  
-                                    ],
-                                    value=None,
-                                    )
-                                 ]
-                                 ),
-                                 html.Div(
-                                          [
-                                           dcc.Graph(id='company_trips_fig',
-                                                     figure = company_trip_pie_fig,
-                                                     style={'margin-top': '20'})
-                                           ],
-                                          ),
-                                 html.Div(
-                                          [
-                                           dcc.Graph(id='hours_fig',
-                                                     figure =  hours_plot_fig,
-                                                     )
-                                           ],
-                                          style={'margin-top': '20'}
-                                          ),
-                                html.Div(
-                                          [
-                                           dcc.Graph(id='avail_per_dev_fig',
-                                                    figure = avail_per_dev_fig,
-                                                     style={'margin-top': '20'})
-                                           ],
-                                          ),
-                                html.Div(
-                                          [
-                                           dcc.Graph(id='map_of_events_fig',
-                                                     #figure = map_fig,
-                                                     style={'margin-top': '20'})
-                                           ],
-                                          ),                                
-                       ]
-                      
-                       )
-                      ]
-)
-
-
-
-# helper function returns trips that are in a specified council district
-def trips_in_cd(tripdb,cd_num):
-    print(type(cd_num))
-    boundary = all_bounds[ cd_num-1 ] 
-    co_start_points = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
-    co_pts = [shapely.geometry.Point(co_pt) for co_pt in co_start_points]
-    bool_vec = [boundary.contains(p) for p in co_pts]   
-    return tripdb.loc[bool_vec]
-
-@app.callback(Output('company_trips_fig', 'figure'),
-              [Input('cd', 'value')],
-               )
-def update_company_figure(selected_cd):
-    #if cd=='1':
-     #   d = trips_in_cd(tdb,1)
-    #else:
-    #    d=tdb
-    print(selected_cd)
-    if selected_cd is None:
-        d = tdb
-        new_label = "City Wide"
-    else:
-        d= cd_trips[selected_cd -1]
-        new_label = "in Council District " + str(selected_cd)
-    bat_users = sum(d['company_name']=='Bat')
-    lemon_users = sum(d['company_name']=='Lemon')
-    
-    company_trip_pie_fig = {
-    "data": [
-    {
-    "values": [],
-    "labels": [
-    "Bat",
-    "Lemon"
-    ],
-    "hoverinfo":"label+value",
-    "type": "pie"
-    },
-    ],
-    "layout": {
-    "title":"Trips Per Company {}".format(new_label),
-    }
-    }
-    company_trip_pie_fig['data'][0]['values'].append(bat_users)
-    company_trip_pie_fig['data'][0]['values'].append(lemon_users)
-    return company_trip_pie_fig
-
-@app.callback(Output('hours_fig', 'figure'),
-              [Input('cd', 'value')],
-               )
-def update_hour_fig(selected_cd):
-    t = cd_trips[selected_cd -1]
-    start_times = [t['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(t))]
-    hour_vec=[datetime.datetime.fromtimestamp(d).hour for d in start_times]
-    hour_vec_ampm = [to_twelve_hour(t) for t in hour_vec]
-    ampm_hours = ['12AM', '1AM','2AM','3AM','4AM','5AM', '6AM','7AM','8AM','9AM','10AM', '11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM']
-    yvals=[]
-    for i in range(len(ampm_hours)):
-        time = ampm_hours[i]
-        yvals.append(sum([(hour_vec_ampm[j]==time) for j in range(len(hour_vec_ampm))]))
-    
-    trace=go.Bar(x=ampm_hours,y=yvals)
-    data=[trace]
-    if selected_cd is not None:
-        layout = layout=go.Layout(title='Trips Taken Per Hour in Council District {}'.format(str(selected_cd)),barmode= 'group',bargroupgap= 0.5)
-    else:
-        layout=go.Layout(title='Total Trips Taken Per Hour',barmode= 'group',bargroupgap= 0.5)
-    layout.yaxis=dict(title= "Number of Trips")
-    layout.xaxis={
-    'type': 'date',
-    'tickformat': '%H:%M',
-    }
-    layout.xaxis=dict(title= "Hour of Day",tickmode='linear')
-    layout.plot_bgcolor='rgb(11, 0, 0)'
-    hours_fig=go.Figure(data=data,layout=layout)
-    return hours_fig
-
-# In[]:
-# Main
-if __name__ == '__main__':
-    app.server.run(debug=False,threaded=True)
-
-
-
-
+# end comment out block
 '''
-# bar chart plot for trip starts and ends per council district
+
 import plotly.graph_objs as go
 import plotly.plotly as py
+
 def plot_cd_start_and_ends(tdb):
     co_end_points = []
     co_start_points = []
@@ -875,12 +629,24 @@ def plot_cd_start_and_ends(tdb):
                     y = total_cd_starts,
                     x = [x for x in range(1,16,1)],
                     name="trip starts",
+                     marker=dict(
+                        color='rgba(50, 171, 96, 0.7)',
+                        line=dict(
+                                color='rgba(50, 171, 96, 1.0)',
+                                width=2,
+                                ) 
+                            )        
+                 )
+
+    trace2 = go.Bar(y= total_cd_ends, x = [x for x in range(1,16,1)],name = "trip ends",
                 marker=dict(
-                color='green'
+                    color='rgba(219, 64, 82, 0.7)',
+                    line=dict(
+                        color='rgba(219, 64, 82, 1.0)',
+                        width=2,
+                            )
+                        )
                     )
-    )
-    trace2 = go.Bar(y= total_cd_ends, x = [x for x in range(1,16,1)],name="trip ends",marker=dict(
-        color='red'))
     data= [trace,trace2]
     layout = go.Layout(
                        barmode='group',
@@ -888,6 +654,194 @@ def plot_cd_start_and_ends(tdb):
                        yaxis={"title":"Counts"},
                        xaxis={"title":"Council District"},
                        )            
-    trips_per_cd_fig = go.Figure(data=data, layout=layout)
-    return trips_per_cd_fig
+    trip_starts_v_ends_fig = go.Figure(data=data, layout=layout)
+    return trip_starts_v_ends_fig
+
+
+
+trip_starts_v_ends_fig = plot_cd_start_and_ends(tdb.head(100))
+
+
+###################################################################  Create app layout
+app.layout = html.Div(
+                      [
+                       html.Div(
+                                [
+                                 html.H1(
+                                         'Dockless Scooter Dashboard - Weekly Overview',
+                                         className =  'eight columns',
+                                         ),
+                                 html.Img(
+                                          src = "https://static1.squarespace.com/static/5952a8abbf629aef69513d41/t/595565dd4f14bc185894d47d/1498768870821/New+LADOT+Logo.png",
+                                          className = 'one columns',
+                                          style = {
+                                          'height': '100',
+                                          'width': '225',
+                                          'float': 'right',
+                                          'position': 'relative',
+                                          },
+                                          ),
+                                 ],
+                                className = 'row'
+                                ),
+                       dcc.Graph(
+                                 id = 'trips_per_cd_fig',
+                                # figure = trips_per_cd_fig,
+                                 style = {'margin-top': '20'}
+                                 ),
+                        dcc.Graph(
+                                id = 'sankey_fig',
+                                 #figure = sankey_fig,
+                                style = {'margin-top': '20'}
+                                ),
+                       html.Div(
+                                [
+                                html.Div([
+                                            html.Label('Select Council District'),
+                                            dcc.Dropdown(id = 'cd',
+                                             
+                                    options = [
+                                    {'label': 'Total City Aggregate', 'value': None},
+                                    {'label': 'Council District 1', 'value': 1},
+                                    {'label': 'Council District 2', 'value': 2},
+                                    {'label': 'Council District 3', 'value': 3},
+                                    {'label': 'Council District 4', 'value': 4},
+                                    {'label': 'Council District 5', 'value': 5},
+                                    {'label': 'Council District 6', 'value': 6},
+                                    {'label': 'Council District 7', 'value': 7},
+                                    {'label': 'Council District 8', 'value': 8},
+                                    {'label': 'Council District 9', 'value': 9},
+                                    {'label': 'Council District 10', 'value': 10},
+                                    {'label': 'Council District 11', 'value': 11},
+                                    {'label': 'Council District 12', 'value': 12},
+                                    {'label': 'Council District 13', 'value': 13},
+                                    {'label': 'Council District 14', 'value': 14},
+                                    {'label': 'Council District 15', 'value': 15},  
+                                    ],
+                                    value = None,
+                                    )
+                                 ]
+                                 ),
+                                 html.Div(
+                                          [
+                                           dcc.Graph(id = 'company_trips_fig',
+                                                  #   figure = company_trip_pie_fig,
+                                                     style={'margin-top': '20'})
+                                           ],
+                                          ),
+                                 html.Div(
+                                          [
+                                           dcc.Graph(id = 'hours_fig',
+                                                  #  figure =  hours_plot_fig,
+                                                     )
+                                           ],
+                                          style = {'margin-top': '20'}
+                                          ),
+                                html.Div(
+                                          [
+                                           dcc.Graph(id = 'avail_per_dev_fig',
+                                                   # figure = avail_per_dev_fig,
+                                                     style = {'margin-top': '20'})
+                                           ],
+                                          ),
+                                html.Div(
+                                          [
+                                           dcc.Graph(id = 'map_of_events_fig',
+                                                     figure = map_fig,
+                                                     #figure = trip_starts_v_ends_fig,
+                                                     style = {'margin-top': '20'})
+                                           ],
+                                          ),                                
+                       ]
+                      
+                       )
+                      ]
+)
+
+
+
+# eturns trips that are in a specified council district
+# tripdb: trips database pandas dataframe
+# cd_num: council district number
+
+def trips_in_cd(tripdb,cd_num):
+    boundary = all_bounds[ cd_num - 1 ] 
+    co_start_points = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
+    co_pts = [shapely.geometry.Point(co_pt) for co_pt in co_start_points]
+    bool_vec = [boundary.contains(p) for p in co_pts]   
+    return tripdb.loc[bool_vec]
+
+###################################################################  callbacks
+# begin comment out 
 '''
+@app.callback(Output('company_trips_fig', 'figure'),
+              [Input('cd', 'value')],
+               )
+def update_company_figure(selected_cd):
+    if selected_cd is None:
+        d = tdb
+        new_label = "City Wide"
+    else:
+        d= cd_trips[ selected_cd - 1]
+        new_label = "in Council District " + str(selected_cd)
+    bat_users = sum(d['company_name'] == 'Bat')
+    lemon_users = sum(d['company_name'] == 'Lemon')
+    
+    company_trip_pie_fig = {
+    "data": [
+    {
+    "values": [],
+    "labels": [
+    "Bat",
+    "Lemon"
+    ],
+    "hoverinfo":"label+value",
+    "type": "pie"
+    },
+    ],
+    "layout": {
+    "title":"Trips Per Company {}".format(new_label),
+    }
+    }
+    company_trip_pie_fig['data'][0]['values'].append(bat_users)
+    company_trip_pie_fig['data'][0]['values'].append(lemon_users)
+    return company_trip_pie_fig
+
+@app.callback(Output('hours_fig', 'figure'),
+              [Input('cd', 'value')],
+               )
+def update_hour_fig(selected_cd):
+    if selected_cd is None:
+        d = tdb
+        new_label = "City Wide"
+    else:
+        d = cd_trips[ selected_cd - 1]
+        new_label = "in Council District " + str(selected_cd)
+    start_times = [d['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(d))]
+    hour_vec=[datetime.datetime.fromtimestamp(d).hour for d in start_times]
+    hour_vec_ampm = [to_twelve_hour(t) for t in hour_vec]
+    ampm_hours = ['12AM', '1AM','2AM','3AM','4AM','5AM', '6AM','7AM','8AM','9AM','10AM', '11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM']
+    yvals = []
+    for i in range(len(ampm_hours)):
+        time = ampm_hours[i]
+        yvals.append(sum([(hour_vec_ampm[j] == time) for j in range(len(hour_vec_ampm))]))
+    trace = go.Bar(x=ampm_hours,y=yvals)
+    data = [trace]
+    layout = go.Layout(title = 'Trips Per Hour {}'.format(new_label), barmode = 'group',bargroupgap = 0.5)
+    layout.yaxis = dict(title = "Number of Trips")
+    layout.xaxis = {
+    'type': 'date',
+    'tickformat': '%H:%M',
+    }
+    layout.xaxis = dict(title = "Hour of Day",tickmode ='linear')
+    layout.plot_bgcolor = 'rgb(11, 0, 0)'
+    hours_fig = go.Figure(data = data,layout = layout)
+    return hours_fig
+# end comment out block
+'''
+
+# Main
+if __name__ == '__main__':
+    #with open('dashCronOutput.txt','a') as outFile:
+       # outFile.write('\n dash app file is being run at ' + str(datetime.datetime.now()))
+    app.server.run(debug = True, threaded = True)
