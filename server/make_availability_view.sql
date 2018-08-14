@@ -88,6 +88,7 @@ b.event_time AS end_time
 FROM
 cte AS a LEFT JOIN cte AS b
 ON a.event_type = 'available' AND b.event_type <> 'available' AND 
+   a.device_id = b.device_id AND
    a.n+1 = b.n
 
 WHERE
