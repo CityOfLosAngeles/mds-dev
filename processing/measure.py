@@ -13,6 +13,7 @@ import fiona
 import pyproj
 import shapely.geometry
 import shapely.ops
+import shapely.wkt
 import pprint
 import time
 import datetime
@@ -95,7 +96,7 @@ class intervals:
             self.counts[k] = to_add[k]
 
 
-def measure(db, start, end, area,debug=True):
+def measure(db, start, end, area, debug=True):
     i_s = intervals(start,end)
     if debug:
         print("Now analyzing {} intervals.".format(len(db)))
@@ -104,8 +105,9 @@ def measure(db, start, end, area,debug=True):
             print("{} of {}".format(i,len(db)))
         t_s = r['start_time']
         t_e = r['end_time']
-        loc = r['location'].strip("()").split(",")
-        loc = shapely.geometry.Point(float(loc[0]), float(loc[1]))
+        loc = r['location']
+        loc = shapely.wkt.loads(loc)
+        # loc = shapely.geometry.Point(float(loc[0]), float(loc[1]))
         if area.contains(loc):
             i_s.add_interval(t_s,t_e)
     s = 0
