@@ -15,7 +15,9 @@ Before running scripts make sure that status change and trips tables are filled 
 
 ## Usage
 
-`python dash_app.py [username] [password] [database name]` will run a locally hosted Dash application (currently for the fake data hosted in a Postgres SQL Server) where [username] and [password] are for the Postgres SQL server and [database name] is the name of the database 
+`python dash_app.py` will run a locally hosted Dash application (currently for the fake data hosted in a Postgres SQL Server).
+
+Requires a configured environmental variable called `DATABASE_URL` where `DATABASE_URL = postgres://user:password@localhost/databasename` where [user] and [password] are for the Postgres SQL server and [databasename] is the name of the database.
 
 `python generate_dashboard.py [username] [password] [database name]` will create a local html file called `dash_testing.html` with preliminary plots.
 
