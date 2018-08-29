@@ -4,7 +4,7 @@ This folder contains a series of scripts useful for creating and maintaining the
 
 `make_tables.sql` will create the trip and status change tables inside of the specified database.
 
-`pull_data.py` pulls from the trip and status change tables from the database and read it into pandas dataframes. To run, use the command `python pull_data.py` and have an environmental variable` DATABSE_URL`.
+`pull_data.py` pulls from the trip and status change tables from the database and read it into pandas dataframes. To run, use the command `python pull_data.py` and have an environmental variable` DATABASE_URL`.
 
 where `DATABASE_UR`L = postgres://user:password@localhost/databasename
 [user] and [password] are for the Postgres SQL server and [databasename] is the name of the database.
