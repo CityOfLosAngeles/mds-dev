@@ -2,8 +2,10 @@
 This script generates an html file 'dash_testing.html' with visualizations for
 the trips and status_change data.
 
-To run in command line, provide postgres username, password, and database name argument
-    
+To run in command line, have a configured environmental variable DATABASE_URL.
+
+to use: python generate_dashboard.py
+  
 Author: Hannah Ross
 '''
 
