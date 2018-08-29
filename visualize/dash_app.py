@@ -78,11 +78,6 @@ CORS(server)
 
 
 ################################################################### read in data from server
-def connect(user,password,db,host='localhost',port=5432):
-    url = 'postgresql://{}:{}@{}:{}/{}'
-    url = url.format(user,password,host,port,db)
-    con = sqlalchemy.create_engine(url)
-    return con
 
 # has commands to retrieve data for non-demo purposes
 def get_data(con):
@@ -196,20 +191,9 @@ SELECT * FROM time_view WHERE to_timestamp( cast( cast(timestamp as text) as int
 
 print ("Loading in server data...")
 
-parser = argparse.ArgumentParser()
-parser.add_argument("user", type=str,
-                    help="username to access postgresql database")
-parser.add_argument("password", type=str,
-                    help="password to access postgresql database")
-parser.add_argument("database", type=str,
-                    help="database name")
-args = parser.parse_args()
-
-# extract arguments to connect to server
-user = args.user
-password = args.password
-db = args.database
-con = connect(user,password,db)
+# using environmental variables
+DATABASE_URL = os.environ['DATABASE_URL']
+con = psycopg2.connect(DATABASE_URL)
 tdb, scdb = get_data(con)
 
 # use for fake data / demo purposes to make data smaller for quicker rendering and debugging
