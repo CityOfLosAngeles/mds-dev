@@ -4,8 +4,6 @@ the trips and status_change data.
 
 To run in command line, provide postgres username, password, and database name argument
     
-* filepaths still need to be changed for reading shapefiles
-    
 Author: Hannah Ross
 '''
 
@@ -43,11 +41,6 @@ username = SETS['username']
 api_key=SETS['api_key']
 plotly.tools.set_credentials_file(username=username, api_key=api_key)
 
-def connect(user,password,db,host='localhost',port=5432):
-    url = 'postgresql://{}:{}@{}:{}/{}'
-    url = url.format(user,password,host,port,db)
-    con = sqlalchemy.create_engine(url)
-    return con
 
 # for real data, will modify to retrieve data for most recent week's interval as measured by current time - 7 days
 # for fake data, this function pulls 1 random week's information from the interval we generated data for
@@ -58,32 +51,10 @@ def get_data(con):
 
     return (trips_db,status_change_db)
 
-parser = argparse.ArgumentParser()
-parser.add_argument("user", type=str,
-                    help="username to access postgresql database")
-parser.add_argument("password", type=str,
-                    help="password to access postgresql database")
-parser.add_argument("database", type=str,
-                    help="database name")
-parser.add_argument("--host","-H", type=str,
-                    help="database host")
-parser.add_argument("--port","-p", type=str,
-                    help="database port")
-args = parser.parse_args()
 
-# extract arguments to connect to server
-user = args.user
-password = args.password
-db = args.database
-host = "localhost"
-if args.host is not None:
-    host = args.host
-port = 5432
-if args.port is not None:
-    port = args.port
-
-# read in trips and status_change data from the server
-con = connect(user,password,db,host,port)
+# # read in trips and status_change data from the server using environmental variables
+DATABASE_URL = os.environ['DATABASE_URL']
+con = psycopg2.connect(DATABASE_URL)
 tdb, scdb = get_data(con)
 
 
@@ -241,7 +212,7 @@ company_plot_url = plot_trips_per_company(tdb,datetime.datetime(2018, 8, 3, 8, 3
 # takes in trips df, plots the number of trips taken in each council district
 # for trips, does not record status change service dropoff at start of day.
 # get each council district's boundary'
-bounds = fiona.open('/Users/hannah1ross/Desktop/mds-dev/data/CouncilDistricts.shp')# fix file path issue
+bounds = fiona.open('../data/CouncilDistricts.shp')# fix file path issue
 
 all_bounds = []
 for i in range(14):
@@ -426,9 +397,9 @@ def read_area(file_name):
     return shapely.ops.cascaded_union(multi_polygon)
 
 
-city_boundary = read_area('/Users/hannah1ross/Desktop/mds-dev/data/City_Boundary.shp')
-sf_equity = read_area('/Users/hannah1ross/Desktop/mds-dev/data/San_Fernando_Valley.shp')
-non_sf_equity = read_area('/Users/hannah1ross/Desktop/mds-dev/data/Non_San_Fernando.shp')
+city_boundary = read_area('../data/City_Boundary.shp')
+sf_equity = read_area('../data/San_Fernando_Valley.shp')
+non_sf_equity = read_area('../data/Non_San_Fernando.shp')
 
 lemon_trips = tdb.loc[tdb['company_name']=='Lemon'].reset_index()
 bat_trips = tdb.loc[tdb['company_name']=='Bat'].reset_index()
