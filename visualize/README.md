@@ -15,8 +15,11 @@ Before running scripts make sure that status change and trips tables are filled 
 
 ## Usage
 
-`python dash_app.py [username] [password] [database name]` will run a locally hosted Dash application (currently for the fake data hosted in a Postgres SQL Server) where [username] and [password] are for the Postgres SQL server and [database name] is the name of the database 
+`python dash_app.py` will run a locally hosted Dash application (currently for the fake data hosted in a Postgres SQL Server).
 
-`python generate_dashboard.py [username] [password] [database name]` will create a local html file called `dash_testing.html` with preliminary plots.
+`python generate_dashboard.py` will create a local html file called `dash_testing.html` with preliminary plots.
+
+
+Both scripts require a configured environmental variable called `DATABASE_URL` where `DATABASE_URL = postgres://user:password@localhost/databasename` where [user] and [password] are for the Postgres SQL server and [databasename] is the name of the database.
 
 Update plotly account settings with a new account's information in SETS of `controls.py` to fix issues for exceeding plotly account limits.

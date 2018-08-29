@@ -2,10 +2,11 @@
 """
     Running this script generates a locally hosted Dash application with figures contructed from a locally hosted transit SQL database.
 
-        to use:    python dash_app.py [username] [password] [database name]
-            where [username] and [password] are for the sql server 
+        to use:    python dash_app.py 
+   
 
     Notes to use:    
+    - have the configured os variable DATABASE_URL
     - comments with keyword 'fake' indicate code that is specific to only fake data usage
         • in get_data(), code is commented as being for real data and for fake data. update as needed.
     - this script requires updated status change and trips database data, and an updated availability view

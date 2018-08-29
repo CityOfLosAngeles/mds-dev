@@ -4,7 +4,12 @@ This folder contains a series of scripts useful for creating and maintaining the
 
 `make_tables.sql` will create the trip and status change tables inside of the specified database.
 
-`pull_data.py` pulls from the trip and status change tables from the database and read it into pandas dataframes. To run, use the command `python pull_data.py user password database [--host HOST] [--port PORT]`. The host and port options are optional, and it will default to `localhost:5432`
+`pull_data.py` pulls from the trip and status change tables from the database and read it into pandas dataframes. To run, use the command `python pull_data.py` and have an environmental variable` DATABASE_URL`.
+
+where `DATABASE_UR`L = postgres://user:password@localhost/databasename
+[user] and [password] are for the Postgres SQL server and [databasename] is the name of the database.
+
+
 
 `fill_tables.py` will fill the tables with json data. To run, use the command `python user passsword database [--host HOST] [--port PORT] filename`. The `filename` must be a path to a file with a list of urls in this format:
 
