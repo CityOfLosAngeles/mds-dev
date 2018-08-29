@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """
-    Running this script generates a locally hosted Dash application with figures contructed from the transit SQL database.
+    Running this script generates a locally hosted Dash application with figures contructed from a locally hosted transit SQL database.
 
-    note:
-    - file paths need to be changed for read_bounds and read_area
-    - this script requires neccessary views: availability,
-    - update Controls.py as needed with enumerations for company_name and device_type or vehicles_type 
+        to use:    python dash_app.py [username] [password] [database name]
+            where [username] and [password] are for the sql server 
 
-    potential issues:
-    - the Provider MDS spec has updated the field 'device_type' to 'vehicle_type'
-    - the fake MDS data used to develop the dashboard still uses the field 'device_type' so all 'device_type' will 
-    need to be changed 'vehicle_type' 
+    Notes to use:    
+    - file paths need to be changed for the functions read_bounds and read_area:
+        (currently path is: '/Users/newmobility/Desktop/mds-dev/data/shapefiles/<file_name>)
+    - comments with keyword 'fake' indicate code that is specific to only fake data usage
+        • in get_data(), code is commented as being for real data and for fake data. update as needed.
+    - this script requires updated status change and trips database data, and an updated availability view
+    - this script import objects from Controls.py which holds the current enumerations for company_name and device_type, and plotly account settings.
+        • update Controls.py as needed with the necessary enumerations for company_name and device_type or vehicles_type 
+        (currently, company_name has Bat and Lemon for the fake data and device_type has scooter and bike)
 
-    
-    to use:    python dash_app.py [username] [password] [database name]
-
-    where [username] and [password] are for the sql server 
+    Issues/Bugs:
+    - the field 'device_type' in the MDS spec has been changed to 'vehicle_type', but the fake data field does not reflect this, so 
+            'device_type' will need to be changed to 'vehicle_type' for non fake data/demo purposes
+    - for demo purposes, the dashboard works when subsetting the top 3000 observations of each database and view, but
+        when all data is read in, the dashboard renders but filtering by mobility provider is not supported.
 
     Author: Hannah Ross
 
@@ -57,19 +61,22 @@ from mapboxgl.utils import *
 from mapboxgl.viz import *
 from shapely.geometry import shape,mapping, Point, Polygon, MultiPolygon
 import shapely.ops
+import plotly.graph_objs as go
+import plotly.plotly as py
 import dash_html_components as html
 import fiona # must keep Fiona after shapely imports to avoid errors
-from controls import COMPANIES,VEHICLES# controls allows for modularity with company names, plotly account settings, 
+from controls import COMPANIES,VEHICLES # controls.py allows for modularity with company names, plotly account settings, offered vehicles types
 
 app = dash.Dash(__name__)
 app.css.append_css({'external_url': 'https://cdn.rawgit.com/plotly/dash-app-stylesheets/2d266c578d2a6e8850ebce48fdb52759b2aef506/stylesheet-oil-and-gas.css'})  # noqa: E501
 server = app.server
 CORS(server)
 
-if 'DYNO' in os.environ:
-    app.scripts.append_script({
-                              'external_url': 'https://cdn.rawgit.com/chriddyp/ca0d8f02a1659981a0ea7f013a378bbd/raw/e79f3f789517deec58f41251f7dbb6bee72c44ab/plotly_ga.js'  # noqa: E501
-                              })
+# commenting out 
+#if 'DYNO' in os.environ:
+    #app.scripts.append_script({
+                #              'external_url': 'https://cdn.rawgit.com/chriddyp/ca0d8f02a1659981a0ea7f013a378bbd/raw/e79f3f789517deec58f41251f7dbb6bee72c44ab/plotly_ga.js'  # noqa: E501
+                 #             })
 
 
 ################################################################### read in data from server
@@ -79,7 +86,7 @@ def connect(user,password,db,host='localhost',port=5432):
     con = sqlalchemy.create_engine(url)
     return con
 
-# has commands to get data for fake data and commands for real data using real time now() parameters
+# has commands to retrieve data for non-demo purposes
 def get_data(con):
     
     fake_trips_command = """
@@ -186,7 +193,6 @@ SELECT * FROM time_view WHERE to_timestamp( cast( cast(timestamp as text) as int
     
     return (trips_db,status_change_db)
 
-
 print ("Loading in server data...")
 
 parser = argparse.ArgumentParser()
@@ -207,8 +213,8 @@ tdb, scdb = get_data(con)
 
 # for test generating, make shorter and quicker
 print('NOW Shorting trips and status change...')
-tdb=tdb.head(2000)
-scdb = scdb.head(2000)
+tdb=tdb.head(100)
+scdb = scdb.head(100)
 
 
 ###################################################################  extract company names and the number of companies
@@ -312,7 +318,6 @@ cd_trips = []
 for i in range(1,16,1):
     cd_trips.append(trips_starting_in_cd(tdb,i))
 
-
 ################################################################### create status change map
 
 print ("Generating status change map...")
@@ -320,8 +325,9 @@ token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQi
  
 # function creates a map of event_types
 # scdb: a status change data frame from the status change database
-def plot_status_changes(scdb):
-    scdb_small = scdb
+def plot_status_changes(scdb_new):
+    token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA' # mapbox access token
+    scdb_small = scdb_new
     start_points =[literal_eval(scdb_small['location'][i]) for i in scdb_small['location'].index] # extract starting location
     events = [scdb_small['event_type'][i] for i in range(len(scdb_small))] # extract corresponding event types for each starting location
 
@@ -365,45 +371,16 @@ def plot_status_changes(scdb):
         b=35,
         t=45
     )
-    lay['title'] = 'Locations of Device Statuses'
+    # if more than 1 unique company name, do not label plot title for a company
+    if len(scdb_new['company_name'].unique())==1:
+        co_label = scdb_new['company_name'].unique()[0]+" "
+    else: # if more than 1 company
+        co_label = ""
+    lay['title'] = "Location of {}Device Statuses".format(co_label)
     map_fig = go.Figure(data = traces,layout = lay)
     return map_fig
 
-map_fig = plot_status_changes(scdb)
-
-###################################################################  create bar chart for trips per council district
-
-print("Generating plot of trips per council district...")
-
-# function creates a double-bar chart (or more than double if more than 2 providers) for the number of trips taken in each council district per company. 
-# tdb: a trips data frame 
-def plot_trips_per_cd(tdb):
-    traces = []
-    for co in companies:
-        co_dc_counts = []
-        for df in cd_trips:
-            co_df = df.loc[df['company_name'] == co]
-            co_df = co_df.reset_index()
-            co_dc_count = len(co_df)
-            co_dc_counts.append(co_dc_count) # FOR REAL DATA
-            co_dc_counts.append(random.randint(111000,119000)) # FOR FAKE DATA DEMO PURPOSES
-        trace = go.Bar(
-                    y = co_dc_counts, # values will depend on updating the above FAKE data append command with REAL data append command
-                    x = [x for x in range(1,16,1)],
-                    name = str(co)
-                    )
-        traces.append(trace)
-    data = traces
-    layout = go.Layout(
-                       barmode = 'group',
-                       title = "Trips Beginning in Each Council District",
-                       yaxis = {"title": "Number of Trips"},
-                       xaxis = {"title": "Council District"},
-                       )            
-    trips_per_cd_fig = go.Figure(data = data, layout = layout)
-    return trips_per_cd_fig
-
-trips_per_cd_fig = plot_trips_per_cd(tdb)
+map_fig = plot_status_changes(scdb) # plot loc of labele status changes
 
 ###################################################################  create pie chart of trips per company
 
@@ -438,7 +415,7 @@ company_trip_pie_fig = plot_trips_per_company(tdb)
 
 ###################################################################  create sankey figure for equity zone flows
 
-# only council district 10 is represented in fake data, so I have hard coded SF valley equity zone values for demo purposes
+# only council district 10 is represented in mock API data, so I have hard coded SF valley equity zone values for demo purposes
 
 print("Generating equity zone sankey plot...")
 
@@ -482,14 +459,11 @@ non_sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/No
 # fucntions returns a sankey diagram for traffic flows between the 3 equity zones  
 # tripsdb: a trips data frame (may be fed company specific trips for company specific equity measures )
 def plot_equity_sankey(tripdb):
-    co_trip_starts = []
-    co_trip_ends = []
-    
-    for i in range(len(tripdb)):
-        co_trip_starts.append(tripdb['route'][i]['features'][0]['geometry']['coordinates'])
-        co_trip_ends.append(tripdb['route'][i]['features'][1]['geometry']['coordinates'])
-    
 
+    # this is where bug is with using all data (and not shorting tdb,scdb, & availdb)
+    co_trip_starts = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
+    co_trip_ends = [tripdb['route'][i]['features'][1]['geometry']['coordinates'] for i in range(len(tripdb))]
+    
     # if length is > 1 do not label title with company
     val_to_val = 0
     val_to_nonval = 0
@@ -502,7 +476,7 @@ def plot_equity_sankey(tripdb):
     city_to_nonval = 120000
 
     '''
-    # comment out -- code works, but takes too long for data that does not cover all 3 zones anyways
+    # comment out for fake data / demo purposes -- code works, but takes too long for data that does not cover all 3 zones anyways
     for i in range(len(tdb)):
         startpt = shapely.geometry.Point(co_trip_starts[i])
         endpt = shapely.geometry.Point(co_trip_ends[i])
@@ -549,7 +523,7 @@ def plot_equity_sankey(tripdb):
                                     color = "black",
                                     width = 0
                                     ),
-                        label = ["San Fernando Valley Equity Zone", "Non San Fernando Valley Equity Zone", "Non-Equity City Zone","San Fernando Valley Equity Zone", "Non San Fernando Valley Equity Zone", "Non-Equity City Zone"],
+                        label = ["SF Valley Equity Zone", "Non SF Valley Equity Zone", "Non-Equity City Zone","SF Valley Equity Zone", "Non SF Valley Equity Zone", "Non-Equity City Zone"],
                         color = ["#4994CE", "#ff853d", "#80b280", "#4994CE", "#ff853d", "#80b280"]
                         ),
             link = dict(
@@ -693,7 +667,8 @@ def to_twelve_hour(hour):
 # function returns pbar lot for the number of trips taken per hour 
 # tripdb: trips data frame
 def plot_trips_per_hour(tripdb):
-    start_times = [tripdb['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(tripdb))]
+    # this line is marked as an error when using all rows. only happends when try subsetting by a mobility provider
+    start_times = [tripdb['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(tripdb))] 
     hour_vec=[datetime.datetime.fromtimestamp(d).hour for d in start_times]
     hour_vec_ampm = [to_twelve_hour(t) for t in hour_vec]
     ampm_hours = ['12AM', '1AM','2AM','3AM','4AM','5AM', '6AM','7AM','8AM','9AM','10AM', '11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM']
@@ -732,7 +707,7 @@ print("Reading in availability view")
 availdb = get_availability(con)
 
 print('NOW shorting avail db')
-availdb = availdb.head(1000) 
+availdb = availdb.head(100) 
 
 # helper function for availability ratio plot that returns the number of availability periods in a given hour from availability view
 def avail_dev_in_hour(hour,pd_df): 
@@ -814,113 +789,13 @@ def plot_availability_ratios(availdb):
     
 avail_per_dev_fig = plot_availability_ratios(availdb)
             
-'''
-# extract both companies' availability view rows
-lemon_avail = availdb.loc[availdb['company_name'] == 'Lemon']
-bat_avail = availdb.loc[availdb['company_name'] == 'Bat']
-
-# compute the unique devices for count of deployed devices per company
-num_bat = len(bat_avail['device_id'].unique())
-num_lemon = len(lemon_avail['device_id'].unique())
-
-tot_bat_dev_per_24hour = [num_bat] * 24
-tot_lemon_dev_per_24hour = [num_lemon] * 24
-
-# compute the number of available windows during each of 24 hours ** counting overlapping hours too
-tot_bat_avail_per_24hour = []
-tot_lemon_avail_per_24hour = []
-
-for i in range(0,24,1):
-    batavail = avail_dev_in_hour(i,bat_avail)
-    lemonavail = avail_dev_in_hour(i,lemon_avail)
-    tot_bat_avail_per_24hour.append(batavail)
-    tot_lemon_avail_per_24hour.append(lemonavail)
-
-# adjust zeros for ratio calculation 
-bat_zeros = []
-lemon_zeros = []
-for i in range(len(tot_bat_avail_per_24hour)):#,tot_lemon_avail_per_24hour):
-    if tot_bat_dev_per_24hour[i] == 0: # record indices with zeros to allow for dividing by 0 for ratio calculations
-        bat_zeros.append(i)
-    if tot_lemon_dev_per_24hour[i] == 0:
-        lemon_zeros.append(i)
-               
-for i in bat_zeros:
-    tot_bat_dev_per_24hour[i] = 0.01
-for i in lemon_zeros:
-    tot_lemon_dev_per_24hour[i] = 0.01
-
-# compute number of availability windows per device: # availibility / total devices
-lemon_avail_ratio = [float( tot_lemon_avail_per_24hour[i] ) / tot_lemon_dev_per_24hour[i] for i in range(24)]#num avail  per num devices
-bat_avail_ratio = [float( tot_bat_avail_per_24hour[i] )  / tot_bat_dev_per_24hour[i] for i in range(24)]# num avail  per num devices
-
-trace = go.Scatter(
-    x = [x for x in range(0,24,1)],
-    y = bat_avail_ratio,
-    name = 'Bat Availability Ratio'
-)
-
-trace0 = go.Scatter(
-    x = [x for x in range(0,24,1)],
-    y = lemon_avail_ratio,
-    mode = 'lines',
-    name = 'Lemon Availability Ratio'   
-)
-
-trace1 = go.Scatter(
-    x = [ x for x in range(0,24,1) ],
-    y = [2] * 24, # adjust this '[2]' to be the required standard ratio of availability per device per hour
-    mode = 'lines',
-    name = 'Required Standard',
-    line = dict(
-        color = 'red',
-        width = 4,
-        dash = 'dash')
-)
-
-data = [trace,trace0,trace1]
-layout = dict(title = 'Availabilities Per Device',
-              xaxis = dict(title = 'Hour of Day'),
-              yaxis = dict(title = 'Availabilities Per Device'),
-              )
-avail_per_dev_fig = go.Figure(data = data, layout = layout)
-'''
-
-
 # end comment out block
-import plotly.graph_objs as go
-import plotly.plotly as py
 
 # function returns double bar chart of the numer of trips starting and ending in each council district
 # tdb: trips dataframs
 def plot_cd_start_and_ends(tdb):
     co_end_points = []
     co_start_points = []
-    '''
-    for i in range(len(tdb)):
-        cur_len = len(tdb['route'][i]['features'])
-        co_end_points.append(tdb['route'][i]['features'][cur_len - 1]['geometry']['coordinates'] )
-        co_start_points.append(tdb['route'][i]['features'][0]['geometry']['coordinates'])
-    # count starts in each cd
-    co_end_points = [shapely.geometry.Point(co_pt) for co_pt in co_end_points]
-    co_start_points = [shapely.geometry.Point(co_pt) for co_pt in co_start_points]
-    
-    total_cd_starts =[]
-    total_cd_ends = []
-    
-    for i in range(len(all_bounds)):
-        boundary = all_bounds[i]
-        start_cd_count = 0
-        end_cd_count = 0
-        for st,end in zip(co_start_points,co_end_points):
-            #pt = shapely.geometry.Point(co_pt)
-            if boundary.contains(st):
-                start_cd_count = start_cd_count + 1
-            if boundary.contains(end):
-                end_cd_count = end_cd_count + 1
-        total_cd_starts.append(start_cd_count)
-        total_cd_ends.append(end_cd_count)
-    '''
     # use 16 x 16 cd_array's row sum and column sum properties to calculate trips entering and leaving each cd
     def num_trips_leaving_cd(cdnum):
         sum = 0
@@ -940,24 +815,10 @@ def plot_cd_start_and_ends(tdb):
     trace = go.Bar(
                     y = total_cd_starts,
                     x = [x for x in range(1,16,1)],
-                    name="trip starts",
-                     marker=dict(
-                        color='rgba(50, 171, 96, 0.7)',
-                        line=dict(
-                                color='rgba(50, 171, 96, 1.0)',
-                                width=2,
-                                ) 
-                            )        
+                    name="trip starts",        
                  )
 
     trace2 = go.Bar(y= total_cd_ends, x = [x for x in range(1,16,1)],name = "trip ends",
-                marker=dict(
-                    color='rgba(219, 64, 82, 0.7)',
-                    line=dict(
-                        color='rgba(219, 64, 82, 1.0)',
-                        width=2,
-                            )
-                        )
                     )
     data= [trace,trace2]
     layout = go.Layout(
@@ -990,12 +851,11 @@ def count_days(day,dayvec):
     return sum(vec)
 
 # function returns a double bar plot for the number of trips taken per day of week for each company *can select  legend to view one company at a time
-###init_trips_df = obs_in_days(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13), tdb)#
 def plot_trips_per_weekdays(trips_df ):
-    
     traces=[]
+
     # add a trace counting trips per day of week for each company
-    # companies is the list of companies in the initial comprehensive trips data base
+   # companies =
     for co in companies:
         df = trips_df.loc[trips_df['company_name'] ==  co].reset_index()
         
@@ -1027,7 +887,7 @@ def plot_trips_per_weekdays(trips_df ):
                        
     return double_bar_fig
 
-#trips_per_weekday_fig = plot_trips_per_weekdays(tdb )
+trips_per_weekday_fig = plot_trips_per_weekdays(tdb )
 
 ################################################################### Plot drop offs by provider
 # show map of provider drop offs
@@ -1036,12 +896,16 @@ token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQi
 # co is an optional parameter to see provider specific drop offs
 
 # function returns a plot of device Drop Offs ( default plot is for plotting all companies' drop offs, but can plot 1 specified company)
-def plot_dropoffs(scdb,co = None):
-    #scdb_small = scdb.head(200) # for demo purposes
+def plot_dropoffs(scdb):#,co = None):
+    token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA' # mapbox access token
+
     scdb_small = scdb
-    if co != None:
-        bool_vec = [scdb_small['company_name'][i] in co for i in range(len(scdb_small))]
-        scdb_small = scdb_small.loc[bool_vec].reset_index()
+    bool_vec = [scdb_small['company_name'][i] for i in range(len(scdb_small))]
+    #if co != None:
+    #bool_vec = [scdb_small['company_name'][i] in co for i in range(len(scdb_small))]
+     #   scdb_small = scdb_small.loc[bool_vec].reset_index()
+   # else:
+       # None # when co is none, no provider was specified
 
     avail_boolvec = [scdb_small['event_type'][i]=='available' for i in range(len(scdb_small))]
     avail_scdb = scdb_small.loc[avail_boolvec].reset_index() # get all avail event types
@@ -1094,10 +958,11 @@ def plot_dropoffs(scdb,co = None):
                  )
             traces.append(trace2) 
        
-    if co == None:
-        co_text = ""
-    else:
-        co_text = co+""
+  #  if co == None:
+   #     co_text = ""
+   # else:
+   #     co_text = co+""
+
     lay = go.Layout()
     lay['hovermode']='closest'
     lay['autosize'] = True
@@ -1114,16 +979,18 @@ def plot_dropoffs(scdb,co = None):
         b=35,
         t=45
     )
-    lay['title'] = 'Location of {}Drop Offs'.format(co_text) # if a company is specified, add company name if do company
+     # if more than 1 unique company name, do not label plot title for a company
+    if len(scdb_small['company_name'].unique())==1:
+        co_label = scdb_small['company_name'].unique()[0] + " "
+    else: # if more than 1 company
+        co_label = ""
+    lay['title'] = 'Location of {}Drop Offs'.format(co_label) # if a company is specified, add company name if do company
     map_fig = go.Figure(data = traces,layout = lay)
     return map_fig
 
-dropoffs_fig = plot_dropoffs(scdb) # indice 0 because if shorting then only 1 provider in head
+dropoffs_fig = plot_dropoffs(scdb) # indice 0 because if shorting then only 1 provider in head  
 
-print("the length of scdb at time of the drop off fig is ",len(scdb)) # for debugging
-
-
-#################################################################### create bar chart for neighborhoods in a cd
+#################################################################### create bar chart for trips per neighborhood in a cd
 # read in neighborhoods bounds
 print("reading in neighborhoods files ...")
 area = fiona.open("/Users/newmobility/Desktop/mds-dev/data/shapefiles/la_neighborhoods.shp")
@@ -1137,8 +1004,10 @@ for a in area:
     neighborhood = read_poly(a['geometry']['coordinates'],original,dest)
     hood_dict['hoods'].append(neighborhood)
 
-# create a dictionary to use for sankey and bar charts
-hoods_in_cd = {'cd':[],'hood_names':[],'hood_bounds':[]} # use this ot make sankeys foe hoods in each cd
+# create a dictionary to use for sankey and bar charts: 
+# 'hood_names' is a list of lists where the 1st indice has the list of all neighborhoods inside cd 1
+# 'hood_bounds' is a list of lists  where the 1st indice has the corresponding multipolygon bounds for all neighborhoods inside cd 1 
+hoods_in_cd = {'hood_names':[],'hood_bounds':[]} # use this ot make sankeys foe hoods in each cd
 for i in range(15):
     curcd_hood_names = []
     curcd_hood_bounds = []
@@ -1149,8 +1018,7 @@ for i in range(15):
     hoods_in_cd['hood_names'].append(curcd_hood_names)
     hoods_in_cd['hood_bounds'].append(curcd_hood_bounds)
 
-# returns an array where the width and height is the number of neighborhoods in a given council disrict, 
-# and the values are the trips between a given cd's neighborhoods
+# function returns an array where the width and height is the number of neighborhoods in a given council disrict, & values are the between neighborhoods
 # tdb: trips data frame
 # cdnum_for_hoods: the INDICE of the council district that neighborhoods are in (ie: council district 4's num would be 3)
 def get_hoods_array(tdb,cdnum_for_hoods):
@@ -1197,70 +1065,21 @@ for i in range(15): # get array for the niehgborhoods of all 15 cds
     cur_cd_hood_array = get_hoods_array(tdb,i)
     cd_hoods_arrays.append(cur_cd_hood_array)
 
-# to generate all colors necessary for all sankey flows and nodes
+# to generate all colors necessary for all sankey flows and nodes for both cd's and neighborhoods
 r = lambda: random.randint(0,255)
-colors=['#%02X%02X%02X' % (r(),r(),r()) for i in range(50000)]
-'''
-c = []
-for i in range(len(hoods_in_cd['hood_bounds'][9])+1):
-    temp = colors[i]
-    for i in range(len(hoods_in_cd['hood_bounds'][9])+1):
-        c.append(temp)
-def plot_cd_hood_sankey(cd_flatlist):
-    data = dict(
-        type='sankey',
-        node = dict(
-            pad = 15,
-            thickness = 20,
-            line = dict(
-                color = "black",
-                width = 0
-                ),
-            label = hoods_in_cd['hood_names'][9] + ["outside LA"] + hoods_in_cd['hood_names'][9] + ["outside LA"],
-            #label = ["CD1", "CD2","CD3","CD4", "CD5","CD6","CD7","CD8","CD9","CD10","CD11","CD12","CD13","CD14","CD15","Outside L.A.","CD1", "CD2","CD3","CD4", "CD5","CD6","CD7","CD8","CD9","CD10","CD11","CD12","CD13","CD14","CD15","Outside L.A."],
-            color = colors[:39] + colors[:39],
-        ),
-        link = dict(
-            source = [i for i in range(len(hoods_in_cd['hood_bounds'][9])+1) for j in range(len(hoods_in_cd['hood_bounds'][9])+1)],
-            target = [i+len(hoods_in_cd['hood_bounds'][9])+1 for j in range(len(hoods_in_cd['hood_bounds'][9])+1) for i in range(len(hoods_in_cd['hood_bounds'][9])+1)], #endinds,
-            value = cd_flatlist, # convert array into a flat list. array is 15 by 15 
-            color = c
-               )
-        )
-
-    layout =  dict(
-        title = "Traffic Between Council District 10 Neighborhoods",
-        font = dict(
-                    size = 10
-                    )
-    )
-    fig = dict(data=[data], layout=layout)
-    return fig
-    
-
-cd_sankey = plot_cd_hood_sankey(cd_10_hoods_flatlist)
-'''
-
-
+colors=['#%02X%02X%02X' % (r(),r(),r()) for i in range(5000)]
 
 ###################################################################  Create app layout
 
 # use data imported from Controls.py to define drop down options for company/mobility provider and the device type.
 vehicle_options = [{'label': str(VEHICLES[mode].capitalize()), 'value': str(mode)}
                                         for mode in VEHICLES]
-vehicle_options.insert(0,{'label':'All','value':None})
 
+vehicle_options.insert(0,{'label':'All','value':None})
+print('VEHICLE OPTIONS LOOKS LIKE THIS: ',vehicle_options)
 company_options = [{'label': str(COMPANIES[co].capitalize()), 'value': str(co)}
                                         for co in COMPANIES]
 company_options.insert(0,{'label':'All','value':None})                                  
-                    
-co_opt_list = [] #options = co_opt_list
-for co in companies:
-    d = {}
-    d['label'] = co
-    d['value'] = co
-    co_opt_list.append(d)
-#provider_opt_list = []
 
 times = [datetime.datetime.utcfromtimestamp(scdb['event_time'][i]) for i in range(len(scdb))]
 sorted_times = sorted(times)
@@ -1277,6 +1096,7 @@ app.layout = html.Div(
                                          className =  'eight columns',
                                          ),
                                  html.Img(
+                                     
                                           src = "https://static1.squarespace.com/static/5952a8abbf629aef69513d41/t/595565dd4f14bc185894d47d/1498768870821/New+LADOT+Logo.png",
                                           className = 'one columns',
                                           style = {
@@ -1289,23 +1109,25 @@ app.layout = html.Div(
                                  ],
                                 className = 'row'
                                 ),
-                                # begin adding text to top of app
+                                # adding text to top of app
                                 html.Div(
             [
-                html.H5(
+                html.H2(
                     cur_week,
-                    id='top_text',
+                    id = 'top_text',
                     className='eight columns'
                 ),
-                html.Br(),
-                html.Br(),   
+                html.Br(), # padding
+          
             ],
             className='row'
         ),
-        # end adding text to top of app
 
-        # begin adding radio select that updates provider_text and mode options
         html.Div([
+                                html.H3(
+                                         'Analyze traffic between council districts',
+                                         className =  'six columns',
+                                ),
                                 html.Div([
                                             html.Label('See traffic leaving a Council District'),
                                             dcc.Dropdown(id = 'cd_start',
@@ -1332,14 +1154,18 @@ app.layout = html.Div(
                                     value = 10,
                                     
                                     ),
+                                 #   html.Br(), # add padding
+                                  #  html.Br(),   
                                 html.Label(''),
                                             dcc.Checklist(
-                                                id='lock_selector', # checkbox used to clear out-flowing vs in-flowing user sankey selections
+                                                id ='lock_selector', # checkbox used to clear out-flowing vs in-flowing user sankey selections
                                                 options=[
                                                     {'label': 'double click to clear settings', 'value': 'clear'}
                                                 ],
                                         values=[],
                                     ),
+                                   # html.Br(), #add padding
+                                    #html.Br(),   
                                             html.Label('See traffic entering a Council District'),
                                             dcc.Dropdown(id = 'cd_end',
                                              
@@ -1371,46 +1197,37 @@ app.layout = html.Div(
 
         html.Div(
                     [
-                        html.P('Filter by mobility provider:'),
+                    #    html.Br(), padding
+                        html.P('See dockless trips by vehicle:'),
                         dcc.RadioItems(
-                            id='provider_selector',
-                            options = company_options,
-                            value=None,
-                            labelStyle={'display': 'inline-block'},
-                            style={'text-align': 'center'}
-                        ),
-                        html.Br(),
-                        html.P('Filter by vehicle type:'),
-                        dcc.RadioItems(
-                            id='mode_selector',
+                            id = 'first_mode_selector',
                             options = vehicle_options,
                             value=None,
                             labelStyle={'display': 'inline-block'},
                             style={'text-align': 'center'}
                         ),
-                        #
-                        #
                     ],
-                    className='four columns'
+                    className='three columns',
+                    style={'text-align': 'center'} 
                     
                 ),
+                
         ],
         className = 'row'
         ),
-        # end adding radio select
-        # begin  first row
+     
 html.Div(
             [
                 html.Div(
                     [
-                        dcc.Graph(id='cd_sankey')
+                        dcc.Graph(id = 'cd_sankey')
                     ],
                     className='eight columns',
                     style={'margin-top': '20'}
                 ),
                 html.Div(
                     [
-                        dcc.Graph(id='company_trips_pie_fig', # this was same name as company trips pie fig
+                        dcc.Graph(id = 'company_trips_pie_fig', # this was same name as company trips pie fig
                         figure = company_trip_pie_fig)
                     ],
                     className='four columns',
@@ -1419,36 +1236,35 @@ html.Div(
             ],
             className='row'
         ),
-        # end trying to make a first row
-
-        # redobegin trying to make a second row
-        html.Div(
+   
+html.Div(
             [
                 html.Div(
                     [
-                        dcc.Graph(id='trips_per_cd_fig')
+                        dcc.Graph(id = 'trip_starts_v_ends_fig',figure = trip_starts_v_ends_fig)
                     ],
-                    className='eight columns',
-                    style={'margin-top': '20'}
+                    className='six columns',
+                    style={'margin-top': '20'}  
                 ),
                 html.Div(
-                    [
-                       dcc.Graph(id='sankey_fig') # this was same name as company trips pie fig
-                        #figure = company_trip_pie_fig)
-                    ],
-                    className='four columns',
+                        [
+                            dcc.Graph(id = 'avail_per_dev_fig', 
+                                figure = avail_per_dev_fig),
+                        ],
+                    className='six columns',
                     style={'margin-top': '20'}
-                ),
-            ],
+                        ),
+                ],
             className='row'
         ),
 
-                                #begin trying to make a second row
+
+
         html.Div(
             [
                 html.P('Filter by mobility provider:'),
                         dcc.RadioItems(
-                            id='provider_selector',
+                            id = 'provider_selector',
                             options = company_options,
                             value=None,
                             labelStyle={'display': 'inline-block'},
@@ -1456,7 +1272,7 @@ html.Div(
                         ),
                 html.P('Filter by vehicle type:'),
                         dcc.RadioItems(
-                            id='mode_selector',
+                            id='second_mode_selector',
                             options = vehicle_options,
                             value=None,
                             labelStyle={'display': 'inline-block'},
@@ -1466,31 +1282,25 @@ html.Div(
                     [
                         dcc.Graph(id='hours_fig')
                     ],
-                    #className='two columns',
-                    #style={'margin-top': '20'}
+               
                 ),
 
             ],
             className='row'
         ),                
-
-
-                                # end trying to make a row
-                                
-                       dcc.Graph(
-                                 id = 'trips_per_cd_fig',
-                                figure = trips_per_cd_fig,
-                                 style = {'margin-top': '20'}
-                                 ),
                         dcc.Graph(
-                                id = 'sankey_fig',
+                                id = 'equity_sankey_fig', # equity zone sankey chart
                                  figure = sankey_fig,
                                 style = {'margin-top': '20'}
+                                ),
+                        html.H3(
+                                         'Select a Council District',
+                                         className =  'eight columns',
                                 ),
                        html.Div(
                                 [
                                 html.Div([
-                                            html.Label('Select Council District'),
+                                            #html.Label('Select Council District'),
                                             dcc.Dropdown(id = 'cd',
                                              
                                     options = [
@@ -1517,46 +1327,33 @@ html.Div(
                                  html.Div(
                                           [
                                            dcc.Graph(id = 'neighborhood_bar_fig',
-                                                    #figure = company_trip_pie_fig,
                                                      style={'margin-top': '20'})
                                            ],
                                           ),                          
                                 html.Div(
                                         [
                                            dcc.Graph(id = 'cd_hood_sankey',
-                                                    #figure =  cd_hood_sankey_fig,
                                                      )
                                            ],
-                                          style = {'margin-top': '20','height':'700'}
+                                          style = {'margin-top': '20'}
                                         ),
-                                #html.Div(
-                                    #    [
-                                       #    dcc.Graph(id = 'trips_per_weekday_fig',
-                                        #            figure =  trips_per_weekday_fig,
-                                        #             )
-                                        #   ],
-                                        #  style = {'margin-top': '20'}
-                                       # ),
-                                html.Div(
-                                          [
-                                           dcc.Graph(id = 'avail_per_dev_fig',
-                                                    figure = avail_per_dev_fig,
-                                                     style = {'margin-top': '20'})
+                                html.Div( 
+                                        [
+                                           dcc.Graph(id = 'trips_per_weekday_fig',
+                                                    figure =  trips_per_weekday_fig,
+                                                     )
                                            ],
-                                          ),
-                                html.Div(
-                                          [
-                                           dcc.Graph(id = 'trip_starts_v_ends_fig',
-                                                    figure = trip_starts_v_ends_fig,
-                                                     style = {'margin-top': '20'})
-                                           ],
-                                          ),
-                                html.Label('Select to See Locations of a Provider\'s Device Statuses'),
-                                dcc.Dropdown(id= 'device status provider',
-                                            options = co_opt_list,
-                                           # value = [co for co in companies], fix this!
-                                            value = ['Lemon'], # fix ! to work when list of vals
-                                            multi = True
+                                          style = {'margin-top': '20'}
+                                        ),
+                                html.H3(
+                                         'Select a Mobility Provider',
+                                         className =  'eight columns',
+                                ),
+                                #html.Label('Select to See Locations of a Provider\'s Device Statuses'),
+                                dcc.Dropdown(id = 'device status provider',
+                                            options = company_options,
+                                            value =  None, 
+                                            multi = False
                                             ),
                                 html.Div(
                                           [
@@ -1565,12 +1362,15 @@ html.Div(
                                                      style = {'margin-top': '20', 'height': '700'})
                                            ],
                                           ),
-                                html.Label('Select to See Locations of a Provider\'s Device Dropoffs'),
+                                 html.H3(
+                                         'Select a Mobility Provider',
+                                         className =  'eight columns',
+                                ), 
+                                #html.Label('Select to See Locations of a Provider\'s Device Dropoffs'),
                                 dcc.Dropdown(id= 'dropoff provider',
-                                            options = co_opt_list,
-                                           # value = [co for co in companies], fix this!
-                                            value = ['Lemon'], # fix ! to work when list of vals
-                                            multi = True
+                                            options = company_options,
+                                            value = None,
+                                            multi = False
                                             ),  
                                 html.Div(
                                           [
@@ -1589,10 +1389,9 @@ html.Div(
 
 
 
-# eturns trips that are in a specified council district
+# Function returns trips that are in a specified council district
 # tripdb: trips database pandas dataframe
 # cd_num: council district number
-
 def trips_starting_in_cd(tripdb,cd_num):
     boundary = all_bounds[ cd_num - 1 ] 
     co_start_points = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
@@ -1600,27 +1399,17 @@ def trips_starting_in_cd(tripdb,cd_num):
     bool_vec = [boundary.contains(p) for p in co_pts]   
     return tripdb.loc[bool_vec]
 
-# Loading screen CSS
+# Loading screen 
 app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/brPBPO.css"})
+
 
 ###################################################################  callbacks
 # begin comment out 
 
-# call back for sankey to from labels.
-# toggle so either seeing all traffic into 1 cd or seeing all traffic out of 1 cd
-# viewing either outflow or inflow. not both.
-print("REComputing neighborhoods arrays for each council district...")
-cd_hoods_arrays =[] # to store all of the arrays for each cd. it is an array of length 15 holding multiple dynamic arrays for each cd.
-for i in range(15): # get array for hoods of all 15 cds
-    cur_cd_hood_array = get_hoods_array(tdb,i)
-    cd_hoods_arrays.append(cur_cd_hood_array)
-
-# callback for when a 1 lone cd is selected, a coucil district hood bar chart is renderd
+# callback for when a user selects a council district -> coucil district's neighborhood specific bar chart is renderd
 @app.callback(Output('neighborhood_bar_fig','figure'),
                 [Input('cd','value')])
 def update_hood_bar_fig(cdval):
-
-
     sums_starting_in_hoods = []
     sums_ending_in_hoods = []
     cdhood_array = cd_hoods_arrays[cdval]
@@ -1633,7 +1422,7 @@ def update_hood_bar_fig(cdval):
         sums_starting_in_hoods.append(sum_starting_in_hood)
         sums_ending_in_hoods.append(sum_ending_in_hood)
 
-    # get starts outside of hood bouds (sum of last row)
+    # get trips beginning outside of neighborhood bounds (sum of last row)
     sum_outofbound_starts = []
     for i in range(len(hoods_in_cd['hood_names'][cdval])+1):
         if i == len(hoods_in_cd['hood_names'][cdval]):
@@ -1642,7 +1431,7 @@ def update_hood_bar_fig(cdval):
                 outofbound_starts = outofbound_starts + cdhood_array[i][j]
             sum_outofbound_starts.append(outofbound_starts)
 
-
+    # get trips ending outside of neighborhood bounds (sum of last row)
     sum_outofbound_ends = []
     for j in range(len(hoods_in_cd['hood_names'][cdval])+1):
         if j == len(hoods_in_cd['hood_names'][cdval]):
@@ -1651,33 +1440,22 @@ def update_hood_bar_fig(cdval):
                 outofbound_starts = outofbound_starts + cdhood_array[i][j]
             sum_outofbound_starts.append(outofbound_starts)
 
-    #sumval_outofbound_start = sum(sum_outofbound_starts)
-   # sumval_outofbound_end = sum(sum_outofbound_ends)
-
     start_trace = go.Bar(
-            x=hoods_in_cd['hood_names'][cdval]+["Not in a Neighborhood"],
+            x=hoods_in_cd['hood_names'][cdval]+["Not in Neighborhood"],
             y=sums_starting_in_hoods + sum_outofbound_starts,
             name="trips started"
     )
     end_trace = go.Bar(
-            x=hoods_in_cd['hood_names'][cdval]+["Not in a Neighborhood"],
+            x=hoods_in_cd['hood_names'][cdval]+["Not in Neighborhood"],
             y=sums_ending_in_hoods + sum_outofbound_ends,
             name="trips ended",
     )
 
-   # data = [go.Bar(
-    ##        x=hoods_in_cd['hood_names'][cdval]+["Not in a Neighborhood Bounds"],
-     #       y=sums_starting_in_hoods + sum_outofbound
-    #)]
     data = [start_trace,end_trace]
-
     lay = go.Layout(title="Trips Per Neighborhood in Council District {}".format(cdval+1) )
-
-    
-    print('row sum for this cds hoods is: ', sum(sums_starting_in_hoods))
-    print('row sum for cd array for this cd is (num trip started in this cd): ', len(cd_trips[cdval]))
     return go.Figure(data=data,layout = lay)
 
+# selects council district -> callback makes a sankey diagram for flows between neighborhoods within the cd
 @app.callback(Output('cd_hood_sankey','figure'),
                 [Input('cd','value')])
 def make_cd_hood_sankey(cdnum):
@@ -1688,11 +1466,11 @@ def make_cd_hood_sankey(cdnum):
         temp = colors[i]
         for i in range(len(hoods_in_cd['hood_bounds'][cdnum])+1):
             c.append(temp)
-    def plot_cd_sankey(cd_flatlist):
+    def plot_cd_sankey(cd_flatlist): # modify sankey plot code to be for neighborhoods not equity zones
         data = dict(
         type='sankey',
         width = 1118,
-        height = 5118,
+        height = 900,
         node = dict(
             pad = 30,
             thickness = 20,
@@ -1706,7 +1484,7 @@ def make_cd_hood_sankey(cdnum):
         link = dict(
             source = [i for i in range(len(hoods_in_cd['hood_bounds'][cdnum])+1) for j in range(len(hoods_in_cd['hood_bounds'][cdnum])+1)],
             target = [i+len(hoods_in_cd['hood_bounds'][cdnum])+1 for j in range(len(hoods_in_cd['hood_bounds'][cdnum])+1) for i in range(len(hoods_in_cd['hood_bounds'][cdnum])+1)], #endinds,
-            value = cd_flatlist, # convert array into a flat list. array is 15 by 15 
+            value = cd_flatlist, # convert array into a flat list of length (# neighborhoods) x (# neighborhoods ) +2
             color = c
                )
         )
@@ -1715,7 +1493,8 @@ def make_cd_hood_sankey(cdnum):
         title = "Traffic Between Council District {} Neighborhoods".format(cdnum+1),
         font = dict(
                     size = 10
-                    )
+                    ),
+       height = 900, # extend length of neighborhood sankey to fit 
         )
         fig = dict(data=[data], layout=layout)
         return fig
@@ -1730,14 +1509,13 @@ def make_cd_hood_sankey(cdnum):
 
 
 
-# update equity sankey for the given company provider selected
-@app.callback(Output('sankey_fig', 'figure'),
+# calllback for vehicle type & mobility provider -> update equity zone sankey plot for the companies respective device trips
+@app.callback(Output('equity_sankey_fig', 'figure'),
               [Input('provider_selector', 'value'),
-              Input('mode_selector', 'value')
+              Input('second_mode_selector', 'value')
               ],
                )
 def update_equity_sankey(provider,dev):
-
     tdb_new = tdb # when both are none
     if provider is not None and dev is not None:
         tdb_new = tdb_new.loc[ (tdb_new['company_name'] == COMPANIES[provider]) & (tdb_new['device_type'] == VEHICLES[dev]) ]
@@ -1759,26 +1537,29 @@ def update_equity_sankey(provider,dev):
     new_fig['layout']['title'] = "{} {} Traffic Between Equity Zones".format(co_label,dev_label)
     return new_fig 
 
-# update trips per hour when provider is selected
-
+# callback to update trips per hour plot when a provider is selected and when a vehicle type is selected 
 @app.callback(Output('hours_fig', 'figure'),
               [Input('provider_selector', 'value'),
-              Input('mode_selector','value')]
+              Input('second_mode_selector','value')]
                )
 def update_hours_fig(provider,dev):
     tdb_new = tdb # when both are none
+    tdb_new = tdb_new.reset_index()
     if provider is not None and dev is not None:
         tdb_new = tdb_new.loc[ (tdb_new['company_name'] == COMPANIES[provider]) & (tdb_new['device_type'] == VEHICLES[dev]) ]
+        tdb_new = tdb_new.reset_index()
         dev_label = VEHICLES[dev].capitalize()
         co_label = COMPANIES[provider].capitalize()
     elif provider is None and dev is not None: # no company, but there is a device type specified
         co_label = "All"
         dev_label = VEHICLES[dev].capitalize()
         tdb_new = tdb_new.loc[  tdb_new['device_type'] == VEHICLES[dev]]
+        tdb_new = tdb_new.reset_index()
     elif dev is None and provider is not None: # no device, but there is a provider compnay specified
         tdb_new = tdb_new.loc[tdb_new['company_name'] == COMPANIES[provider]]
         co_label = COMPANIES[provider].capitalize()
         dev_label = "Dockless"
+        tdb_new = tdb_new.reset_index() # attempt to fix bug with using all rows by adding tdb_new = tdb_new.reset_index() to all lines
     else: # both are none
         dev_label = "Dockless"
         co_label = "All"
@@ -1788,20 +1569,8 @@ def update_hours_fig(provider,dev):
     return new_fig
     
 
-
-
-
-'''
-@app.callback(Output('cd_start', 'value'),
-              [Input('cd_end', 'value')]
-               )
-def toggle_start_end2(cd_end):
-    if cd_end is not None:
-        return None
-    else:
-        None
-'''
-
+# user checks box to clear cd to cd sankey preferences -> callback clears sankey diagram and returns to initial state 
+# (initial state showing all trips bewteen all cd's with flows colored by their origin location)
 @app.callback(Output('cd_start', 'value'),
               [Input('lock_selector', 'values')]
                )
@@ -1811,6 +1580,8 @@ def toggle_start(lock):
     else:
         return None
 
+# user checks box to clear cd to cd sankey preferences -> callback clears sankey diagram and returns to initial state 
+# (initial state showing all trips bewteen all cd's with flows colored by their origin location)
 @app.callback(Output('cd_end', 'value'),
               [Input('lock_selector', 'values')]
                )
@@ -1820,45 +1591,23 @@ def toggle_end(lock):
     else:
         return None
 
-
-
-# update graphs when provider_selector is chosen
-# - update
-'''
+# user picks a vehicle type -> callback updates trips per company pie figure for trips of that mode
 @app.callback(Output('company_trips_pie_fig', 'figure'),
-              [Input('cd', 'value'),
-              Input('mode_selector','value')],
+              [Input('first_mode_selector','value')]
                )
-def update_trips_
-'''
-
-# update trips per company for a givenmode/vehicle type
-
-@app.callback(Output('company_trips_pie_fig', 'figure'),
-              [#Input('cd', 'value'),
-              Input('mode_selector','value')]
-               )
-def update_trips_per_company_figure(selected_dev): # shows pie chart of trips per company
+def update_trips_per_company_figure(selected_dev): # shows pie chart of trips per company for a selected device type
     d = tdb
-    #print('selected mode value is: ',VEHICLES(selected_dev))
-    #if selected_cd is 0:
-     #   cd_label = "City"
-    #new = plot_trips_per_company(tdb):
-    #new['layout']['title'] = mode_label+' Trips Per Company in ' + cd_label
-    #else:
-     #   d = cd_trips[ selected_cd - 1]
-     #   cd_label = "Council District " + str(selected_cd)
-    if selected_dev is None:
-        mode_label = "Dockless"
+    if selected_dev is None: # if no vehicle type specified, do not subset
+        mode_label = "Dockless" # if not otherwise specified, label breakdown as being for all Dockless
 
-    elif selected_dev is not None: # if want all modes of vehicle type, do not subset
+    elif selected_dev is not None: # susbet for a specific device type if specified
         d = d.loc[d['device_type']==VEHICLES[selected_dev]].reset_index()
         mode_label = VEHICLES[selected_dev].capitalize()
-        print("number of selected devices (scooters or bikes) is: ",len(d))
     else:
         None
 
-    newcompanies = d['company_name'].unique()
+    newcompanies = d['company_name'].unique() 
+    # if there are 1 or more companies for that device type, render a pie chart with count measures
     if len(newcompanies) >= 1:
         company_trip_pie_fig = {
             "data": [
@@ -1878,7 +1627,7 @@ def update_trips_per_company_figure(selected_dev): # shows pie chart of trips pe
             co_users = sum(d['company_name'] == co)
             company_trip_pie_fig['data'][0]['values'].append(co_users)
         newfig = company_trip_pie_fig
-
+    # if there are not any companies for the device type, render an empty graph with all 0 measures
     else:
         company_trip_pie_fig = {
             "data": [
@@ -1887,6 +1636,7 @@ def update_trips_per_company_figure(selected_dev): # shows pie chart of trips pe
         "labels": [co for co in tdb['company_name'].unique()],
         "hoverinfo": "label + value",
         "type": "pie",
+        
         "hole":0.5
         }, 
         ],
@@ -1896,12 +1646,14 @@ def update_trips_per_company_figure(selected_dev): # shows pie chart of trips pe
         } 
         newfig = company_trip_pie_fig
 
-    newfig['layout']['title'] = mode_label + ' Trips Per Company'# + cd_label
+    newfig['layout']['title'] = mode_label + ' Trips Per Company'
     return newfig
 
-'''
+# user selects a council district -> callback updates trips per weekday for only trips beginning in that council district
+# note that 'cd' comes in as an indice of the cd, not as hte cd number. so for cd 10 plots, 'cd' will be 9. 
+
 @app.callback(Output('trips_per_weekday_fig', 'figure'),
-              [Input('cd', 'value')],
+              [Input('cd', 'value')], 
                )
 def update_trips_per_weekdays(selected_cd):# shows bar chart of trips per day per company in a council district
     
@@ -1909,8 +1661,8 @@ def update_trips_per_weekdays(selected_cd):# shows bar chart of trips per day pe
         d = tdb
         new_label = "City Wide"
     else:
-        d = cd_trips[ selected_cd - 1]
-        new_label = "in Council District " + str(selected_cd)
+        d = cd_trips[ selected_cd] #'cd' comes in as an indice of the cd, not as the actual council district
+        new_label = "in Council District " + str(selected_cd+1)
         #
     companies = d['company_name'].unique()
 
@@ -1945,7 +1697,7 @@ def update_trips_per_weekdays(selected_cd):# shows bar chart of trips per day pe
         
     double_bar_fig = go.Figure(data=data, layout=layout)
     return double_bar_fig
-'''
+
 
 # colors for council district sankey plot nodes and linkds
 colors = ['#EF431A',
@@ -1967,14 +1719,15 @@ colors = ['#EF431A',
 
 
 # arrange colors for links of sankey using colors from nodes. 2 arrangements for depicting traffic outflows vs inflows in chart.
-entering_colors = [] # arranged so colors will vary by route origins when showing flows of traffic into 1 cd
+# arranged so colors will vary by trip origins when showing all the traffic entering into a cd
+entering_colors = [] 
 for i in range(16):
     temp = colors[i]
     for i in range(16):
         entering_colors.append(temp)
         
-
-exiting_colors = ["" for i in range(16*16)] # arranged so colors vary by route destination when showing outflow of traffic from a cd to others
+# arrange colors so link colors in sankey vary by trip destination when showing the exiting traffic of a cd
+exiting_colors = ["" for i in range(16*16)] 
 for i in range(16*16):
     if i < 239:
         c = colors[i%16]
@@ -1983,6 +1736,7 @@ for i in range(16*16):
     else:
         exiting_colors[i] = colors[i%16]
 
+# callback to update council district sankey flows to be going out of or into the specified start/end council districts
 @app.callback(Output('cd_sankey', 'figure'),
               [Input('cd_start', 'value'),
               Input('cd_end','value'),
@@ -1991,7 +1745,7 @@ for i in range(16*16):
 def update_cd_sankey(startnum,endnum): # update cd to cd sankey plot when given start and/or end points
     array_copy = deepcopy(cd_array) # 16 by 16 array with number of trips from cd to cd. rows correspond to starting cd, columns correspond to ending cd. 
     
-    # make all values in 16 by 16 array 0 if they do not correspond to routes beginning in the selected origin council district
+    # temporarily make all values in the 16 by 16 cd_array 0 if they do not correspond to routes beginning in the selected origin council district
     if startnum != None and endnum is None: 
         link_colors = exiting_colors # colors vary by the destination cd of routes
         for i in range(16):
@@ -2053,26 +1807,35 @@ def update_cd_sankey(startnum,endnum): # update cd to cd sankey plot when given 
     fig = dict(data=[data], layout=layout)
     return fig 
 
-# update dropoffs_fig when given a provider
-'''
-@app.callback(Output('dropoffs_fig', 'figure'),
-              [Input('cd_start', 'value'),
-              Input('cd_end','value'),
-              ],
-               )
-               '''
+# callback to show map of Drop Offss for the user selected mobility provider.
+@app.callback(Output('map_of_dropoffs_fig','figure'),
+                    [Input('dropoff provider','value')])
+def update_provider_dropoffs(co_name): #co_name  here from dropoff provider is actually a value not a name
+    if co_name is None: # none corresponds to 0 (key:value in dictionary is 0:None) 
+        co_name = 0
 
-'''
-@app.callback(Output('mode_text','children'),
-                    [Input('mode_selector','value')])
-def change_mode_text(pickedprovider):
-    return str(pickedprovider)
-'''
+    if co_name == 0: # none so got changed to zero so no subsetting use all obs for all companies in scdb
+        scdb_new = scdb # do not subset
+    else:
+        scdb_new = scdb.loc[scdb['company_name'] == COMPANIES[co_name]].reset_index()
+    return plot_dropoffs(scdb_new)
+
+
+# callback to show map of device statuses for the user selected mobility provider
+@app.callback(Output('map_of_events_fig', 'figure'),
+                    [Input('device status provider','value')])
+def update_provider_statuses(co_name):
+    if co_name is None:
+        scdb_new = scdb # do not subset
+    else:
+        scdb_new = scdb.loc[scdb['company_name'] == COMPANIES[co_name]]
+        scdb_new = scdb_new.reset_index()
+    status_map_fig = plot_status_changes(scdb_new)
+    return status_map_fig
+
 
 # Main
 if __name__ == '__main__':
-    #with open('dashCronOutput.txt','a') as outFile:
-       # outFile.write('\n dash app file is being run at ' + str(datetime.datetime.now()))
     app.server.run(debug = True, threaded = True)
 
 
