@@ -65,7 +65,7 @@ import plotly.graph_objs as go
 import plotly.plotly as py
 import dash_html_components as html
 import fiona # must keep Fiona after shapely imports to avoid errors
-from controls import COMPANIES,VEHICLES # controls.py allows for modularity with company names, plotly account settings, offered vehicles types
+from controls import SETS,COMPANIES,VEHICLES # controls.py allows for modularity with company names, plotly account settings, offered vehicles types
 
 app = dash.Dash(__name__)
 app.css.append_css({'external_url': 'https://cdn.rawgit.com/plotly/dash-app-stylesheets/2d266c578d2a6e8850ebce48fdb52759b2aef506/stylesheet-oil-and-gas.css'})  # noqa: E501
