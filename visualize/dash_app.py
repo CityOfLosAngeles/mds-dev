@@ -183,14 +183,17 @@ WITH time_view AS (
 SELECT * FROM time_view WHERE to_timestamp( cast( cast(timestamp as text) as int ) ) > to_timestamp(1533416032) AND to_timestamp( cast( cast(timestamp as text) as int ) ) < to_timestamp(1533416032)+ INTERVAL \'7 DAY\'
 """
 
-    # for FAKE DATA, use:
+    # for FAKE DATA, use below with 'fake_trips_command' :
+    # '''
     trips_db = pandas.read_sql(fake_trips_command,con,index_col=None)
     status_change_db = pandas.read_sql('SELECT * FROM "status_change" WHERE to_timestamp(event_time) > to_timestamp(1533416032) AND to_timestamp(event_time) < to_timestamp(1533416032)+ INTERVAL \'7 DAY\'',con, index_col=None)
+    # '''
 
-    # for REAL DATA,use:
-    # trips_db = pandas.read_sql(real_trips_command,con,index_col=None) 
-    # status_change_db = pandas.read_sql('SELECT * FROM "status_change" WHERE to_timestamp(event_time) > now() AND to_timestamp(event_time) < now() + INTERVAL \'7 DAY\'',con, index_col=None)
-    
+    # for REAL DATA, use below with 'real_trips_command' :
+    '''
+     trips_db = pandas.read_sql(real_trips_command,con,index_col=None) 
+     status_change_db = pandas.read_sql('SELECT * FROM "status_change" WHERE to_timestamp(event_time) > now() AND to_timestamp(event_time) < now() + INTERVAL \'7 DAY\'',con, index_col=None)
+     '''
     return (trips_db,status_change_db)
 
 print ("Loading in server data...")
@@ -211,11 +214,12 @@ db = args.database
 con = connect(user,password,db)
 tdb, scdb = get_data(con)
 
-# for test generating, make shorter and quicker
-print('NOW Shorting trips and status change...')
+# use for fake data / demo purposes to make data smaller for quicker rendering and debugging
+# '''
+print('NOW Shortening trips and status change...')
 tdb=tdb.head(100)
 scdb = scdb.head(100)
-
+# '''
 
 ###################################################################  extract company names and the number of companies
 companies = tdb['company_name'].unique()
@@ -223,9 +227,9 @@ companies = tdb['company_name'].unique()
 ###################################################################  read in council district boundaries
 print("Processing council districts...")
 
-# function to read in council district boundaries
+# Function to read in council district boundaries
 def read_bounds(filename):
-    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/' + filename)# fix file path issue
+    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/' + filename)# update file path
     return bounds
 
 # read in council district boundaries
@@ -296,11 +300,11 @@ def get_cd_array(tdb):
         
 
 print("Calculating trips from council district to council district...")
-cd_array = get_cd_array(tdb) # returns 16 by 16 array
-cd_flatlist = [item for r in cd_array for item in r] # converts array into a flatlist of 225 values in order to be used for sankey flow plot
+cd_array = get_cd_array(tdb) # a returns 16 by 16 array where row [i]'s sum is all trips beginning in cd i+1, and column [i]'s sum is all trips ending in cd i+1
+cd_flatlist = [item for r in cd_array for item in r] # converts array into a flatlist of 225 values in order to be usable for sankey flow plot
 
 ################################################################### preproccess trips for each council district
-# begin comment 
+
 print("Subsetting trips into dataframes per council district...")
 
 # Function returns a data frame with all trip observations that start in a given council district
@@ -323,7 +327,7 @@ for i in range(1,16,1):
 print ("Generating status change map...")
 token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA' # mapbox access token
  
-# function creates a map of event_types
+# Function creates a map of event_types
 # scdb: a status change data frame from the status change database
 def plot_status_changes(scdb_new):
     token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA' # mapbox access token
@@ -386,7 +390,7 @@ map_fig = plot_status_changes(scdb) # plot loc of labele status changes
 
 print("Generating pie chart of trips per company...")
 
-# function returns a pie chart of the percent of trips per company
+# Function returns a pie chart of the percent of trips per company
 # tripdb: a trips data frame from the trips database, may be a subset of exclusively bike or scooter trips.
 def plot_trips_per_company(tripdb):
     newcompanies = tripdb['company_name'].unique()
@@ -419,7 +423,7 @@ company_trip_pie_fig = plot_trips_per_company(tdb)
 
 print("Generating equity zone sankey plot...")
 
-# helper function to be used in processing shapefiels into multipolygons
+# Helper Function to be used in processing shapefiels into multipolygons
 def read_poly(poly, original, dest):
     interior = []
     exterior = []
@@ -460,24 +464,25 @@ non_sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/No
 # tripsdb: a trips data frame (may be fed company specific trips for company specific equity measures )
 def plot_equity_sankey(tripdb):
 
-    # this is where bug is with using all data (and not shorting tdb,scdb, & availdb)
+    # this is where the bug is for when using all data (and not shortening tdb,scdb, & availdb)
     co_trip_starts = [tripdb['route'][i]['features'][0]['geometry']['coordinates'] for i in range(len(tripdb))]
     co_trip_ends = [tripdb['route'][i]['features'][1]['geometry']['coordinates'] for i in range(len(tripdb))]
     
-    # if length is > 1 do not label title with company
+    # initialize counts as zero
     val_to_val = 0
     val_to_nonval = 0
     val_to_city = 0
     nonval_to_nonval = 0
     nonval_to_val = 0
     nonval_to_city = 0
-    city_to_city = 3000
-    city_to_val = 20000
-    city_to_nonval = 120000
+    city_to_city = 0
+    city_to_val = 0
+    city_to_nonval = 0
 
+    
+    # let in for real data, but comment out for fake data / demo purposes -- code works, but pointless for data that does not cover all 3 zones anyways
     '''
-    # comment out for fake data / demo purposes -- code works, but takes too long for data that does not cover all 3 zones anyways
-    for i in range(len(tdb)):
+    for i in range(len(tripdb)):
         startpt = shapely.geometry.Point(co_trip_starts[i])
         endpt = shapely.geometry.Point(co_trip_ends[i])
         if (sf_equity.contains(startpt)):
@@ -505,7 +510,8 @@ def plot_equity_sankey(tripdb):
             None   
     '''
 
-    # hard coded values to compensate for lack of valley representation in fake data
+    # let in for fake data: hard coded values to compensate for lack of valley representation in mock API data
+    # '''
     val_to_val = 100000
     val_to_nonval = 20000
     val_to_city = 32000
@@ -513,6 +519,9 @@ def plot_equity_sankey(tripdb):
     nonval_to_nonval = 300000
     nonval_to_city = 650000
     city_to_val = 12000
+    city_to_city = 3000
+    city_to_nonval = 120000
+    # '''
 
     data = dict(
            type='sankey',
@@ -536,7 +545,7 @@ def plot_equity_sankey(tripdb):
                         )
             )
 
-    # if only 1 company given, the function is plotting a company specific subset and should label it as that company's equity breakdown
+    # if only 1 company given, the Function is plotting a company specific subset and should label it as that company's equity breakdown
     if len(tripdb['company_name'].unique()) is 1:
         co = tripdb['company_name'].unique()[0] # co is company label used in title of plot
     else: # more than 1 company is represented in dataframe
@@ -574,7 +583,7 @@ sankey_fig = plot_equity_sankey(tdb)
 
 ################################################################### create sankey plot for council district flows
 
-# define colors for council district flows
+# define colors for council district flows in cd sankey
 colors = ['#EF431A',
  '#9F359D',
  '#34325B',
@@ -592,7 +601,7 @@ colors = ['#EF431A',
  '#99FFEB',
  '#746FB1']
 
-# order colors for sankey diagram flows. 
+# Ordering the colors for sankey diagram flows 
 # c: link colors
 # colors: node colors
 
@@ -602,7 +611,7 @@ for i in range(15):
     for i in range(15):
         c.append(temp)
 
-# function returns a council district sankey diagram. used only in the callback function for a cd selector with default set to cd 10.
+# Function returns a council district sankey diagram. used only in the callback Function for a cd selector with default set to cd 10.
 # cd_flatlist: flat list with  225 values from the 16x16 array of trips from cd to cd
 def plot_cd_sankey(cd_flatlist):
     data = dict(
@@ -636,13 +645,10 @@ def plot_cd_sankey(cd_flatlist):
     fig = dict(data=[data], layout=layout)
     return fig
     
-
-#cd_sankey = plot_cd_sankey(cd_flatlist)
-
 ################################################################### create bar chart for trips per hour
 
 
-# helper function to return =dataframe with trips in falling within a specified interval
+# Helper Function to return =dataframe with trips in falling within a specified interval
 # firstday: datetime time stamps 
 # lastday: datetime time stamps
 # pd_df: trips pandas dataframe
@@ -651,7 +657,7 @@ def obs_in_days(firstday,lastday,pd_df):
     bool_vec = [((datetime.datetime.utcfromtimestamp(d) >= firstday) & (datetime.datetime.utcfromtimestamp(d) <= lastday)) for d in start_time]
     return pd_df.loc[bool_vec].reset_index()
 
-# helper function used for plotting trips per hour, returns am-pm times from military time
+# Helper Function used for plotting trips per hour, returns am-pm times from military time
 # hour: integer between 0 and 23
 def to_twelve_hour(hour):
     if hour > 12:
@@ -664,7 +670,7 @@ def to_twelve_hour(hour):
     else:
         return str(hour) + 'AM'
 
-# function returns pbar lot for the number of trips taken per hour 
+# Function returns bar chart for the number of trips taken per hour 
 # tripdb: trips data frame
 def plot_trips_per_hour(tripdb):
     # this line is marked as an error when using all rows. only happends when try subsetting by a mobility provider
@@ -689,15 +695,9 @@ def plot_trips_per_hour(tripdb):
     hours_fig = go.Figure(data = data,layout = layout)
     return hours_fig
 
-
-# can filter trips database using obs_in functions for date window specification
-#tdb_filtered = obs_in_days(datetime.datetime(2018, 8, 3, 8, 32, 13) ,datetime.datetime(2018, 8, 10, 8, 33, 13),tdb)
-print("NOT Generating trips per hour figure...")
-#hours_plot_fig = plot_trips_per_hour(tdb)
-
 ###################################################################  create plot of 24 hour availabilities per device ratios
 
-# function reads in the availability view from sql server
+# Function reads in the availability view from sql server
 def get_availability(con):
     availability_db = pandas.read_sql('SELECT * FROM "availability"',con,index_col=None)
     return availability_db
@@ -706,10 +706,13 @@ def get_availability(con):
 print("Reading in availability view")
 availdb = get_availability(con)
 
-print('NOW shorting avail db')
+# use for fake data / demo purposes to make processing quicker for development and debugging 
+# ''' 
+print('NOW shortening availability view')
 availdb = availdb.head(100) 
+# '''
 
-# helper function for availability ratio plot that returns the number of availability periods in a given hour from availability view
+# Helper Function for availability ratio plot that returns the number of availability periods in a given hour from availability view
 def avail_dev_in_hour(hour,pd_df): 
     start_time = [time for time in pd_df['start_time']]
     end_time = [time for time in pd_df['end_time']]
@@ -788,10 +791,8 @@ def plot_availability_ratios(availdb):
     return avail_per_dev_fig
     
 avail_per_dev_fig = plot_availability_ratios(availdb)
-            
-# end comment out block
 
-# function returns double bar chart of the numer of trips starting and ending in each council district
+# Function returns double bar chart of the numer of trips starting and ending in each council district
 # tdb: trips dataframs
 def plot_cd_start_and_ends(tdb):
     co_end_points = []
@@ -834,23 +835,23 @@ trip_starts_v_ends_fig = plot_cd_start_and_ends(tdb)
 
 ####################################################### plot trips per day of week
 
-# helper function returns trip database observations that occur  within a period of 2 specified days  (days are datetime objects)
+# Helper Function returns trip database observations that occur  within a period of 2 specified days  (days are datetime objects)
 def obs_in_days(firstday,lastday,pd_df):
     start_time = [pd_df['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(pd_df))]
     bool_vec = [((datetime.datetime.utcfromtimestamp(d) >=firstday) & (datetime.datetime.utcfromtimestamp(d)<= lastday)) for d in start_time]
     return pd_df.loc[bool_vec].reset_index()
 
-# helper function extracts the days of each trip for plotting trips taken per day of week
+# Helper Function extracts the days of each trip for plotting trips taken per day of week
 def get_days_of_trips(tripsdf):
     start_time = [tripsdf['route'][i]['features'][0]['properties']['timestamp'] for i in range(len(tripsdf))]
     return [calendar.day_name[datetime.datetime.utcfromtimestamp(x).weekday()] for x in start_time]
 
-# helper function counts the frequency of each day given a list of days, to be used for plotting trips per day of week
+# Helper Function counts the frequency of each day given a list of days, to be used for plotting trips per day of week
 def count_days(day,dayvec):
     vec=[dayvec[i]==day for i in range(len(dayvec))]
     return sum(vec)
 
-# function returns a double bar plot for the number of trips taken per day of week for each company *can select  legend to view one company at a time
+# Function returns a double bar plot for the number of trips taken per day of week for each company *can select  legend to view one company at a time
 def plot_trips_per_weekdays(trips_df ):
     traces=[]
 
@@ -893,19 +894,13 @@ trips_per_weekday_fig = plot_trips_per_weekdays(tdb )
 # show map of provider drop offs
 print("Generating map of provider drop offs...")
 token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA' # mapbox token
-# co is an optional parameter to see provider specific drop offs
 
-# function returns a plot of device Drop Offs ( default plot is for plotting all companies' drop offs, but can plot 1 specified company)
-def plot_dropoffs(scdb):#,co = None):
+# Function returns a plot of device Drop Offs ( default plot is for plotting all companies' drop offs, but can plot 1 specified company)
+def plot_dropoffs(scdb):
     token = 'pk.eyJ1IjoiaGFubmFocm9zczMzIiwiYSI6ImNqajR3aHcwYzFuNWcza3BnNzVoZzQzcHQifQ.eV_IJn3AdBE3n57rd2fhFA' # mapbox access token
 
     scdb_small = scdb
     bool_vec = [scdb_small['company_name'][i] for i in range(len(scdb_small))]
-    #if co != None:
-    #bool_vec = [scdb_small['company_name'][i] in co for i in range(len(scdb_small))]
-     #   scdb_small = scdb_small.loc[bool_vec].reset_index()
-   # else:
-       # None # when co is none, no provider was specified
 
     avail_boolvec = [scdb_small['event_type'][i]=='available' for i in range(len(scdb_small))]
     avail_scdb = scdb_small.loc[avail_boolvec].reset_index() # get all avail event types
@@ -913,7 +908,7 @@ def plot_dropoffs(scdb):#,co = None):
     reasons = [avail_scdb['reason'][i] for i in range(len(avail_scdb))] # extract reaons for the avails
  
     # create dataframes for startpoints and endpoints with lat and long coords
-    df = {'lat':[], 'lon':[],'reason':[]} # maybe add a company field?
+    df = {'lat':[], 'lon':[],'reason':[]} 
 
     for p in points:
         lon,lat = p[0],p[1]
@@ -957,11 +952,6 @@ def plot_dropoffs(scdb):#,co = None):
                              ),
                  )
             traces.append(trace2) 
-       
-  #  if co == None:
-   #     co_text = ""
-   # else:
-   #     co_text = co+""
 
     lay = go.Layout()
     lay['hovermode']='closest'
@@ -984,11 +974,11 @@ def plot_dropoffs(scdb):#,co = None):
         co_label = scdb_small['company_name'].unique()[0] + " "
     else: # if more than 1 company
         co_label = ""
-    lay['title'] = 'Location of {}Drop Offs'.format(co_label) # if a company is specified, add company name if do company
+    lay['title'] = 'Location of {}Drop Offs'.format(co_label) # if a company is specified, add company name to title
     map_fig = go.Figure(data = traces,layout = lay)
     return map_fig
 
-dropoffs_fig = plot_dropoffs(scdb) # indice 0 because if shorting then only 1 provider in head  
+dropoffs_fig = plot_dropoffs(scdb) # indice 0 because if shortening then only 1 provider in head  
 
 #################################################################### create bar chart for trips per neighborhood in a cd
 # read in neighborhoods bounds
@@ -1018,7 +1008,7 @@ for i in range(15):
     hoods_in_cd['hood_names'].append(curcd_hood_names)
     hoods_in_cd['hood_bounds'].append(curcd_hood_bounds)
 
-# function returns an array where the width and height is the number of neighborhoods in a given council disrict, & values are the between neighborhoods
+# Function returns an array where the width and height is the number of neighborhoods in a given council disrict, & values are the between neighborhoods
 # tdb: trips data frame
 # cdnum_for_hoods: the INDICE of the council district that neighborhoods are in (ie: council district 4's num would be 3)
 def get_hoods_array(tdb,cdnum_for_hoods):
@@ -1041,8 +1031,8 @@ def get_hoods_array(tdb,cdnum_for_hoods):
         rows.append(r)
     
     for st,end in zip(co_start_points,co_end_points):
-        start_tf=[b.contains(st) for b in hoods_in_cd['hood_bounds'][cdnum_for_hoods]] # cd 9 hoods
-        end_tf = [b.contains(end) for b in hoods_in_cd['hood_bounds'][cdnum_for_hoods]] # cd 9 hoods
+        start_tf=[b.contains(st) for b in hoods_in_cd['hood_bounds'][cdnum_for_hoods]] 
+        end_tf = [b.contains(end) for b in hoods_in_cd['hood_bounds'][cdnum_for_hoods]] 
         
         try:
             start = start_tf.index(True)
@@ -1227,7 +1217,7 @@ html.Div(
                 ),
                 html.Div(
                     [
-                        dcc.Graph(id = 'company_trips_pie_fig', # this was same name as company trips pie fig
+                        dcc.Graph(id = 'company_trips_pie_fig',
                         figure = company_trip_pie_fig)
                     ],
                     className='four columns',
@@ -1241,7 +1231,8 @@ html.Div(
             [
                 html.Div(
                     [
-                        dcc.Graph(id = 'trip_starts_v_ends_fig',figure = trip_starts_v_ends_fig)
+                        dcc.Graph(id = 'trip_starts_v_ends_fig',
+                        figure = trip_starts_v_ends_fig)
                     ],
                     className='six columns',
                     style={'margin-top': '20'}  
@@ -1358,7 +1349,7 @@ html.Div(
                                 html.Div(
                                           [
                                            dcc.Graph(id = 'map_of_events_fig',
-                                                     figure = map_fig,
+                                                     figure = map_fig,# map of status changes
                                                      style = {'margin-top': '20', 'height': '700'})
                                            ],
                                           ),
@@ -1404,7 +1395,6 @@ app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/brPBPO.css"
 
 
 ###################################################################  callbacks
-# begin comment out 
 
 # callback for when a user selects a council district -> coucil district's neighborhood specific bar chart is renderd
 @app.callback(Output('neighborhood_bar_fig','figure'),
