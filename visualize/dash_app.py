@@ -6,8 +6,6 @@
             where [username] and [password] are for the sql server 
 
     Notes to use:    
-    - file paths need to be changed for the functions read_bounds and read_area:
-        (currently path is: '/Users/newmobility/Desktop/mds-dev/data/shapefiles/<file_name>)
     - comments with keyword 'fake' indicate code that is specific to only fake data usage
         • in get_data(), code is commented as being for real data and for fake data. update as needed.
     - this script requires updated status change and trips database data, and an updated availability view
@@ -229,12 +227,12 @@ print("Processing council districts...")
 
 # Function to read in council district boundaries
 def read_bounds(filename):
-    bounds = fiona.open('/Users/newmobility/Desktop/mds-dev/data/shapefiles/' + filename)# update file path
+    bounds = fiona.open('../data/shapefiles/' + filename)
     return bounds
 
 # read in council district boundaries
 bounds= read_bounds('CouncilDistricts.shp')
-
+print('read bounds')
 all_bounds = [] # boundaries of all 15 council districts
 for i in range(len(bounds)):
     original = pyproj.Proj(bounds.crs)
@@ -456,9 +454,9 @@ def read_area(file_name):
         return shapely.ops.cascaded_union(multi_polygon)
     
 # read in equity zone boundaries
-city_boundary = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/City_Boundary.shp')
-sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/San_Fernando_Valley.shp')
-non_sf_equity = read_area('/Users/newmobility/Desktop/mds-dev/data/shapefiles/Non_San_Fernando.shp')
+city_boundary = read_area('../data/shapefiles/City_Boundary.shp')
+sf_equity = read_area('../data/shapefiles/San_Fernando_Valley.shp')
+non_sf_equity = read_area('../data/shapefiles/Non_San_Fernando.shp')
 
 # fucntions returns a sankey diagram for traffic flows between the 3 equity zones  
 # tripsdb: a trips data frame (may be fed company specific trips for company specific equity measures )
@@ -983,7 +981,7 @@ dropoffs_fig = plot_dropoffs(scdb) # indice 0 because if shortening then only 1 
 #################################################################### create bar chart for trips per neighborhood in a cd
 # read in neighborhoods bounds
 print("reading in neighborhoods files ...")
-area = fiona.open("/Users/newmobility/Desktop/mds-dev/data/shapefiles/la_neighborhoods.shp")
+area = fiona.open("../data/shapefiles/la_neighborhoods.shp") 
 original = pyproj.Proj(area.crs, preserve_units=True)
 dest = pyproj.Proj(init='epsg:4326')
 hood_dict={}
