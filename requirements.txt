@@ -1,0 +1,17 @@
+dash
+dash_core_components
+dash_html_components
+fiona
+flask
+mapboxgl
+measure
+gdal
+pandas
+pandas
+plotly
+psycopg2
+pyproj
+requests
+shapely
+sortedcontainers
+sqlalchemy
