@@ -102,3 +102,9 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Generated data
+bat_trips
+lemon_trips
+bat_status_change
+lemon_status_change
