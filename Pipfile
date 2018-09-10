@@ -1,0 +1,27 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+pandas = "*"
+dash = "*"
+dash-core-components = "*"
+dash-html-components = "*"
+mapboxgl = "*"
+measure = "*"
+plotly = "*"
+"psycopg2" = "*"
+pyproj = "*"
+requests = "*"
+sortedcontainers = "*"
+Fiona = "*"
+Flask = "*"
+GDAL = "*"
+Shapely = "*"
+SQLAlchemy = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.6"
