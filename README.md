@@ -1,6 +1,6 @@
 # mds-dev
 
-# :alert: This repo is depreciated, please use the [MDS-Provider library](https://github.com/cityofsantamonica/mds-provider)
+# :exclamation: This repo is depreciated, please use the [MDS-Provider library](https://github.com/cityofsantamonica/mds-provider)
 
 System that can set up, manage, and visualize data given to the city by various mobility providers. In progress.
 
